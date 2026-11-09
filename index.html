@@ -94,6 +94,17 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="actions"><button id="copy">Copy Dimensions</button><button id="csv">Export CSV</button><button id="print">Print</button></div>
 </section>
 
+<section class="card wide" id="reelCard">
+  <h2>Reel Size</h2>
+  <div class="two" style="max-width:760px">
+    <label>Reel Size (<span id="reelU">cm</span>)<input id="reelIn" type="text" inputmode="decimal" placeholder="0"><span class="err" id="e_reel"></span></label>
+    <label>Boards Across Reel<input id="cnt" type="text" inputmode="numeric" placeholder="1"><span class="err" id="e_cnt"></span></label>
+  </div>
+  <div class="two" style="max-width:760px"><label>Fit Reel Against<select id="rdim"><option value="W">Board Width</option><option value="L">Board Length</option></select></label><span></span></div>
+  <button class="primary" id="rcalc" style="max-width:760px">CALCULATE REEL USAGE</button>
+  <div id="rout" style="margin-top:14px"></div>
+</section>
+
 <section class="card wide" id="gsmCard">
   <h2>GSM Selection and Board Weight</h2>
   <div id="gsmLayers"></div>
@@ -124,6 +135,7 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="two"><label>Number of Cartons<select id="mn"></select></label><span></span></div>
   <div class="two"><label>Ply Configuration<select id="mply"></select></label><span></span></div>
   <div class="two"><label>Length Allowance (cm)<select id="malL"></select></label><label>Width Allowance (cm)<select id="malW"></select></label></div>
+  <div class="two"><label>Fit Reel Against<select id="mrdim"></select></label><span></span></div>
   <h2>Paper GSM</h2>
   <div id="mgsm"></div>
 </section>
@@ -176,6 +188,8 @@ const Engine = {
     const gsm=out.reduce((a,x)=>a+x.eff,0),g=area*gsm/10000;
     return {layers:out,gsm,g,kg:g/1000,area:area/10000,qty,qtyKg:qty?g*qty/1000:null};
   },
+  validateCount(raw){const v=Engine.validate(raw);return !v.ok||Number.isInteger(v.value)?v:{ok:false,msg:'Must be a whole number'}},
+  reel(b,r,n){const used=b*n,trim=r-used;return {used,trim,pct:trim/r*100,max:Math.floor(r/b+1e-9),fits:used<=r+1e-9}},  // cm
   master({l,w,h},al=CFG.allowance){                // cm in, cm out, area in m2
     const L=2*(l+w)+al.length,W=w+h+al.width;
     return { L, W, area:L*W/10000 };
@@ -185,13 +199,13 @@ const Engine = {
 /* ===== 3. UI ===== */
 const $=id=>document.getElementById(id);
 const alDef=()=>({length:CFG.allowance.length,width:CFG.allowance.width});
-const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:'',u:'cm'}));
-const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null};
+const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:'',u:'cm',reel:'',cnt:'1'}));
+const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null};
 const d=(x,n)=>String(+x.toFixed(n));
 
 function init(){
   $('type').innerHTML=Object.entries(CFG.cartons).map(([k,c])=>`<option value="${k}">${c.label}</option>`).join('');
-  $('type').onchange=()=>{S.type=$('type').value;S.vals={};S.result=null;S.wres=null;S.gsm={3:{},5:{}};S.qty='';S.mres=null;renderAll()};
+  $('type').onchange=()=>{S.type=$('type').value;S.vals={};S.result=null;S.wres=null;S.gsm={3:{},5:{}};S.qty='';S.mres=null;S.rres=null;S.cnt='1';renderAll()};
   initControls();
   $('calc').onclick=calculate;
   $('wcalc').onclick=calcWeight;
@@ -211,7 +225,7 @@ function renderAll(){
   $('notice').textContent=c.ready?'':`${c.label} formulas have not been provided yet. Inputs are ready, calculation will be enabled once the specification is confirmed.`;
   $('fields').innerHTML=c.fields.map(([k,n])=>`<label>${n} (<span class="u">${S.unit}</span>)<input id="f_${k}" type="text" inputmode="decimal" placeholder="0" value="${S.vals[k]||''}"><span class="err" id="e_${k}"></span></label>`).join('');
   c.fields.forEach(([k])=>$('f_'+k).oninput=e=>{S.vals[k]=e.target.value;e.target.classList.remove('bad');$('e_'+k).textContent='';updateCube()});
-  renderFlutes();drawPly();updateCube();renderResult();renderGsm();renderWeight();syncControls();renderMulti();
+  renderFlutes();drawPly();updateCube();renderResult();renderGsm();renderWeight();renderReel();syncControls();renderMulti();
 }
 
 function renderFlutes(){
@@ -226,14 +240,14 @@ function setUnit(nu){
 }
 function setPly(v){S.ply=v;S.wres=null;S.mres=null;renderFlutes();drawPly();renderGsm();renderWeight();renderMout();syncControls()}
 function setAl(k,v){
-  S.al[k]=+v;const a=!!S.result,b=!!S.mres,c=!!S.wres;
-  S.result=null;S.wres=null;S.mres=null;syncControls();
-  if(a){calculate();if(c&&S.result)calcWeight()}else renderResult();
+  S.al[k]=+v;const a=!!S.result,b=!!S.mres,c=!!S.wres,rr=!!S.rres;
+  S.result=null;S.wres=null;S.mres=null;S.rres=null;syncControls();
+  if(a){calculate();if(c&&S.result)calcWeight();if(rr&&S.result)calcReel()}else renderResult();
   renderWeight();if(b)calcMulti();else renderMout();
 }
 function syncControls(){
   ['','m'].forEach(p=>{if(!p)$('unit').value=S.unit;$(p+'ply').value=S.ply;$(p+'alL').value=S.al.length;$(p+'alW').value=S.al.width});
-  $('mn').value=S.n;
+  $('mn').value=S.n;$('rdim').value=S.rdim;$('mrdim').value=S.rdim;
 }
 function initControls(){
   $('mply').innerHTML=$('ply').innerHTML;
@@ -247,6 +261,11 @@ function initControls(){
     if(!p)$('unit').onchange=e=>setUnit(e.target.value);
     $(p+'ply').onchange=e=>setPly(e.target.value);
   });
+  $('mrdim').innerHTML=$('rdim').innerHTML;
+  $('rdim').onchange=e=>setRdim(e.target.value);$('mrdim').onchange=e=>setRdim(e.target.value);
+  $('rcalc').onclick=calcReel;
+  $('reelIn').oninput=e=>{S.vals.reel=e.target.value;$('e_reel').textContent=''};
+  $('cnt').oninput=e=>{S.cnt=e.target.value;$('e_cnt').textContent=''};
   $('mcalc').onclick=calcMulti;$('mprint').onclick=()=>window.print();
   $('mcsv').onclick=()=>{if(!S.mres){setStatus('Nothing to export',true);return}const t=multiTable();dl([t.head,...t.body],'kpl-multi-carton.csv')};
   $('navS').onclick=()=>showView('s');$('navM').onclick=()=>showView('m');
@@ -272,7 +291,7 @@ function calculate(){
   if(!c.ready){setStatus('Formula pending',true);return}
   const r=Engine.master(cm,S.al);
   S.result={type:S.type,ply:S.ply,cm,al:{...S.al},L:r.L,W:r.W,area:r.area,time:new Date().toLocaleString()};
-  S.wres=null;setStatus('Calculated');renderResult();renderWeight();
+  S.wres=null;S.rres=null;setStatus('Calculated');renderResult();renderWeight();renderReel();
 }
 
 function setStatus(t,warn){$('status').textContent=t;document.querySelector('.status i').style.background=warn?'#e6a23c':'#1f9d63'}
@@ -320,7 +339,7 @@ Calculated on ${r.time}`;
 }
 
 function reset(){
-  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null});
+  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null});
   $('type').value='master';$('unit').value='cm';$('ply').value='3';
   setStatus('Ready');$('steps').textContent='Enter dimensions and press calculate.';renderAll();
 }
@@ -333,7 +352,7 @@ function copyDims(){
 
 function exportCsv(){
   if(!S.result){setStatus('Nothing to export',true);return}
-  const csv=rows().concat(weightRows()).map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const csv=rows().concat(reelRows(),weightRows()).map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));
   a.download='kpl-board-calculation.csv';a.click();URL.revokeObjectURL(a.href);
@@ -381,7 +400,8 @@ function calcWeight(){
     if(v.ok) q=v.value; else ok=false;
   }
   if(!ok){setStatus('Check GSM inputs',true);return}
-  S.wres={...Engine.weight(S.result.L,S.result.W,list,q),L:S.result.L,W:S.result.W,ply:S.ply,time:new Date().toLocaleString()};
+  const pr=S.rres,L=pr?pr.pL:S.result.L,W=pr?pr.pW:S.result.W;
+  S.wres={...Engine.weight(L,W,list,q),L,W,prod:!!pr,count:pr?pr.count:1,ply:S.ply,time:new Date().toLocaleString()};
   setStatus('Weight calculated');renderWeight();
 }
 
@@ -390,11 +410,11 @@ function renderWeight(){
   if(!w){$('wout').innerHTML='';$('wsteps').textContent='';return}
   const u=S.unit,F=v=>Engine.fmt(v,u),hasQ=w.qty!=null;
   const flutes=[...new Set(w.layers.filter(x=>x.t!=='L').map(x=>x.t))];
-  let h=`<div class="big" style="margin-top:16px"><div class="stat"><span>WEIGHT PER BOARD (g)</span><b>${d(w.g,2)} g</b></div><div class="stat"><span>WEIGHT PER BOARD (kg)</span><b>${d(w.kg,4)} kg</b></div></div>`;
-  h+=`<div class="tbl"><table class="wt"><tr><td>Layer</td><td>GSM</td><td>Take-up</td><td>Effective GSM</td><td>Weight per board (g)</td>${hasQ?'<td>Weight for quantity (kg)</td>':''}</tr>`;
+  let h=`<div class="big" style="margin-top:16px"><div class="stat"><span>WEIGHT PER ${w.prod?'BOX AT PRODUCTION SIZE':'BOARD'} (g)</span><b>${d(w.g,2)} g</b></div><div class="stat"><span>WEIGHT PER ${w.prod?'BOX AT PRODUCTION SIZE':'BOARD'} (kg)</span><b>${d(w.kg,4)} kg</b></div></div>`;
+  h+=`<div class="tbl"><table class="wt"><tr><td>Layer</td><td>GSM</td><td>Take-up</td><td>Effective GSM</td><td>Weight per ${w.prod?'box (production)':'board'} (g)</td>${hasQ?'<td>Weight for quantity (kg)</td>':''}</tr>`;
   h+=w.layers.map(l=>`<tr><td>${l.name}</td><td>${l.gsm}</td><td>${l.f.toFixed(2)}</td><td>${d(l.eff,2)}</td><td>${d(l.g,2)}</td>${hasQ?`<td>${d(l.g*w.qty/1000,3)}</td>`:''}</tr>`).join('');
   h+=`<tr><td>Total</td><td></td><td></td><td>${d(w.gsm,2)}</td><td>${d(w.g,2)}</td>${hasQ?`<td>${d(w.qtyKg,3)}</td>`:''}</tr></table></div>`;
-  h+=`<table style="margin-top:14px"><tr><td>Board Length</td><td>${F(w.L)} ${u}</td></tr><tr><td>Board Width</td><td>${F(w.W)} ${u}</td></tr><tr><td>Board Area</td><td>${d(w.area,4)} m²</td></tr><tr><td>Flute Take-up Factors</td><td>${flutes.map(k=>k+' = '+CFG.flutes[k].toFixed(2)).join(', ')}</td></tr><tr><td>Effective Total Board GSM</td><td>${d(w.gsm,2)}</td></tr><tr><td>Estimated Weight (g)</td><td>${d(w.g,2)} g</td></tr><tr><td>Estimated Weight (kg)</td><td>${d(w.kg,4)} kg</td></tr>${hasQ?`<tr><td>Production Quantity</td><td>${w.qty} pcs</td></tr><tr><td>Theoretical Paper Consumption</td><td>${d(w.qtyKg,3)} kg</td></tr>`:''}</table>`;
+  h+=`<table style="margin-top:14px"><tr><td>${w.prod?'Production':'Board'} Length</td><td>${F(w.L)} ${u}</td></tr><tr><td>${w.prod?'Production':'Board'} Width</td><td>${F(w.W)} ${u}</td></tr><tr><td>${w.prod?'Production':'Board'} Area</td><td>${d(w.area,4)} m²</td></tr><tr><td>Flute Take-up Factors</td><td>${flutes.map(k=>k+' = '+CFG.flutes[k].toFixed(2)).join(', ')}</td></tr><tr><td>Effective Total Board GSM</td><td>${d(w.gsm,2)}</td></tr><tr><td>Estimated Weight (g)</td><td>${d(w.g,2)} g</td></tr><tr><td>Estimated Weight (kg)</td><td>${d(w.kg,4)} kg</td></tr><tr><td>Weight Basis</td><td>${w.prod?'Production size per box (reel size / boards across)':'Calculated board size'}</td></tr>${hasQ?`<tr><td>Production Quantity</td><td>${w.qty} pcs</td></tr><tr><td>Theoretical Paper Consumption</td><td>${d(w.qtyKg,3)} kg</td></tr>`:''}</table>`;
   h+=`<div class="notice" style="margin-top:14px">This is an estimated theoretical paper weight from nominal GSM and flat blank size. Actual production weight will differ. No wastage, trim loss, moisture or tolerance is applied.</div>`;
   $('wout').innerHTML=h;
   const L=d(w.L,4),W=d(w.W,4);
@@ -406,7 +426,7 @@ ${w.layers.map((l,i)=>`  ${i+1}. ${l.name}: ${l.gsm} × ${l.f} = ${d(l.eff,2)}`)
 
 Effective Total GSM = ${w.layers.map(l=>d(l.eff,2)).join(' + ')} = ${d(w.gsm,2)}
 
-Board size = ${L} cm × ${W} cm = ${d(w.area,4)} m²
+${w.prod?'Production size per box (reel size / boards across)':'Board size'} = ${L} cm × ${W} cm = ${d(w.area,4)} m²
 Weight (g) = ${L} × ${W} × ${d(w.gsm,2)} / 10,000 = ${d(w.g,2)} g
 Weight (kg) = ${d(w.g,2)} / 1,000 = ${d(w.kg,4)} kg${hasQ?`
 
@@ -419,9 +439,44 @@ function weightRows(){
   const w=S.wres;if(!w) return [];
   return [['',''],['GSM and Weight (theoretical estimate)',w.time],
     ...w.layers.map(l=>[l.name+' GSM',`${l.gsm} x ${l.f} = ${d(l.eff,2)} effective, ${d(l.g,2)} g`]),
-    ['Board Area (m²)',d(w.area,4)],['Effective Total GSM',d(w.gsm,2)],['Weight per Board (g)',d(w.g,2)],['Weight per Board (kg)',d(w.kg,4)],
+    [(w.prod?'Production':'Board')+' Area (m²)',d(w.area,4)],['Effective Total GSM',d(w.gsm,2)],['Weight per Board (g)',d(w.g,2)],['Weight per Board (kg)',d(w.kg,4)],
     ...(w.qty!=null?[['Production Quantity',w.qty],['Theoretical Paper Consumption (kg)',d(w.qtyKg,3)]]:[])];
 }
+
+/* ===== 3b2. REEL ===== */
+function setRdim(v){
+  S.rdim=v;const a=!!S.rres,b=!!S.mres;S.rres=null;syncControls();
+  if(a&&S.result)calcReel();else renderReel();
+  if(b)calcMulti();
+}
+function calcReel(){
+  if(!S.result){$('rout').innerHTML='<div class="notice">Calculate the board dimensions first, then calculate reel usage.</div>';setStatus('Dimensions needed',true);return}
+  const rv=Engine.validate(S.vals.reel||''),cv=Engine.validateCount(S.cnt||'');
+  $('e_reel').textContent=rv.ok?'':rv.msg;$('e_cnt').textContent=cv.ok?'':cv.msg;
+  if(!rv.ok||!cv.ok){setStatus('Check reel inputs',true);return}
+  const dim=S.rdim==='L'?S.result.L:S.result.W,reelCm=Engine.toCm(rv.value,S.unit),r=Engine.reel(dim,reelCm,cv.value);
+  if(!r.fits){
+    S.rres=null;S.wres=null;renderReel();renderWeight();
+    $('e_reel').textContent=`Reel too small: ${cv.value} boards need ${Engine.fmt(r.used,S.unit)} ${S.unit}. Maximum that fit: ${r.max}`;
+    setStatus('Does not fit',true);return;
+  }
+  const pL=S.rdim==='L'?reelCm/cv.value:S.result.L,pW=S.rdim==='W'?reelCm/cv.value:S.result.W,hadW=!!S.wres;
+  S.rres={dim:S.rdim,dimCm:dim,reelCm,count:cv.value,...r,pL,pW,pArea:pL*pW/10000};
+  S.wres=null;setStatus('Reel calculated');renderReel();renderWeight();
+  if(hadW) calcWeight();
+}
+function reelList(){
+  const r=S.rres,u=S.unit,F=v=>Engine.fmt(v,u)+' '+u;
+  return [[`Board ${r.dim==='L'?'Length':'Width'}`,F(r.dimCm)],['Reel Size',F(r.reelCm)],['Boards Across Reel',r.count],
+    ['Used Width',`${r.count} × ${Engine.fmt(r.dimCm,u)} = ${F(r.used)}`],['Trim Width',F(r.trim)],['Trim',d(r.pct,2)+' % of reel'],['Maximum Boards That Fit',r.max],['Trim per Box',F(r.trim/r.count)],['Production Length (1 box)',F(r.pL)],['Production Width (1 box)',F(r.pW)],['Production Area (1 box)',d(r.pArea,4)+' m²']];
+}
+function renderReel(){
+  $('reelCard').hidden=!CFG.cartons[S.type].hasPly;
+  $('reelU').textContent=S.unit;$('reelIn').value=S.vals.reel||'';$('cnt').value=S.cnt;
+  const r=S.rres,u=S.unit;
+  $('rout').innerHTML=!r?'':`<div class="big"><div class="stat"><span>PRODUCTION LENGTH (1 BOX)</span><b>${Engine.fmt(r.pL,u)} ${u}</b></div><div class="stat"><span>PRODUCTION WIDTH (1 BOX)</span><b>${Engine.fmt(r.pW,u)} ${u}</b></div><div class="stat"><span>PRODUCTION AREA (1 BOX)</span><b>${d(r.pArea,4)} m²</b></div></div><table>${reelList().map(([a,b])=>`<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>`;
+}
+function reelRows(){return S.rres?[['',''],['Reel Usage',''],...reelList()]:[]}
 
 /* ===== 3c. MULTIPLE CARTONS ===== */
 function renderMulti(){renderRows();renderMout()}
@@ -429,13 +484,16 @@ function renderRows(){
   const nm={l:'Length',w:'Width',h:'Height'};
   $('mrows').innerHTML=Array.from({length:S.n},(_,i)=>{
     const r=S.rows[i];
-    return `<div class="mrow"><b>Carton ${i+1}</b>${['l','w','h'].map(k=>`<label>${nm[k]} (${r.u})<input id="r_${i}_${k}" type="text" inputmode="decimal" placeholder="0" value="${r[k]}"></label>`).join('')}<label>Unit<select id="ru_${i}">${['cm','mm','in'].map(x=>`<option ${r.u===x?'selected':''}>${x}</option>`).join('')}</select></label><span class="err" id="re_${i}" style="grid-column:1/-1"></span></div>`;
+    return `<div class="mrow"><b>Carton ${i+1}</b>${['l','w','h'].map(k=>`<label>${nm[k]} (${r.u})<input id="r_${i}_${k}" type="text" inputmode="decimal" placeholder="0" value="${r[k]}"></label>`).join('')}<label>Unit<select id="ru_${i}">${['cm','mm','in'].map(x=>`<option ${r.u===x?'selected':''}>${x}</option>`).join('')}</select></label><label style="grid-column:2">Reel Size (${r.u}, optional)<input id="rr_${i}" type="text" inputmode="decimal" placeholder="0" value="${r.reel}"></label><label>Boards Across<input id="rc_${i}" type="text" inputmode="numeric" placeholder="1" value="${r.cnt}"></label><span class="err" id="re_${i}" style="grid-column:1/-1"></span></div>`;
   }).join('');
   for(let i=0;i<S.n;i++){
-    ['l','w','h'].forEach(k=>$(`r_${i}_${k}`).oninput=e=>{S.rows[i][k]=e.target.value;e.target.classList.remove('bad');$('re_'+i).textContent=''});
+    const clr=e=>{e.target.classList.remove('bad');$('re_'+i).textContent=''};
+    ['l','w','h'].forEach(k=>$(`r_${i}_${k}`).oninput=e=>{S.rows[i][k]=e.target.value;clr(e)});
+    $('rr_'+i).oninput=e=>{S.rows[i].reel=e.target.value;clr(e)};
+    $('rc_'+i).oninput=e=>{S.rows[i].cnt=e.target.value;clr(e)};
     $('ru_'+i).onchange=e=>{
       const r=S.rows[i],nu=e.target.value;
-      ['l','w','h'].forEach(k=>{const v=Engine.validate(r[k]||'');if(v.ok)r[k]=String(+Engine.fromCm(Engine.toCm(v.value,r.u),nu).toFixed(4))});
+      ['l','w','h','reel'].forEach(k=>{const v=Engine.validate(r[k]||'');if(v.ok)r[k]=String(+Engine.fromCm(Engine.toCm(v.value,r.u),nu).toFixed(4))});
       r.u=nu;renderRows();
     };
   }
@@ -443,25 +501,41 @@ function renderRows(){
 function calcMulti(){
   const gl=collectGsm('m');let ok=!!gl;const items=[];
   for(let i=0;i<S.n;i++){
-    const u=S.rows[i].u,cm={},ent={},errs=[];
+    const R=S.rows[i],u=R.u,cm={},ent={},errs=[];
     ['l','w','h'].forEach(k=>{
-      const v=Engine.validate(S.rows[i][k]||'');
+      const v=Engine.validate(R[k]||'');
       $(`r_${i}_${k}`).classList.toggle('bad',!v.ok);
       if(v.ok){cm[k]=Engine.toCm(v.value,u);ent[k]=v.value}else errs.push(k.toUpperCase()+': '+v.msg);
     });
+    const b=errs.length?null:Engine.master(cm,S.al);let rl=null;
+    if(b&&String(R.reel||'').trim()!==''){
+      const rv=Engine.validate(R.reel),cn=Engine.validateCount(R.cnt||'');
+      if(!rv.ok) errs.push('Reel: '+rv.msg);
+      if(!cn.ok) errs.push('Boards: '+cn.msg);
+      if(rv.ok&&cn.ok){
+        const rc=Engine.toCm(rv.value,u),r=Engine.reel(S.rdim==='L'?b.L:b.W,rc,cn.value);
+        if(r.fits) rl={reelCm:rc,count:cn.value,...r};
+        else errs.push(`Reel too small: ${cn.value} boards need ${Engine.fmt(r.used,u)} ${u}, maximum ${r.max} fit`);
+      }
+    }
     $('re_'+i).textContent=errs.join(', ');
-    if(errs.length) ok=false; else items.push({cm,u,size:`${d(ent.l,4)}X${d(ent.w,4)}X${d(ent.h,4)} ${u}`});
+    if(errs.length) ok=false; else {
+      const pL=rl&&S.rdim==='L'?rl.reelCm/rl.count:b.L,pW=rl&&S.rdim==='W'?rl.reelCm/rl.count:b.W;
+      items.push({cm,u,size:`${d(ent.l,4)}X${d(ent.w,4)}X${d(ent.h,4)} ${u}`,...b,rl,pL,pW,area:pL*pW/10000});
+    }
   }
   if(!ok){setStatus('Check inputs',true);return}
-  S.mres={al:{...S.al},time:new Date().toLocaleString(),items:items.map(o=>{const b=Engine.master(o.cm,S.al);return {...o,...b,wt:Engine.weight(b.L,b.W,gl,null)}})};
+  S.mres={al:{...S.al},dim:S.rdim,hasR:items.some(o=>o.rl),time:new Date().toLocaleString(),items:items.map(o=>({...o,wt:Engine.weight(o.pL,o.pW,gl,null)}))};
   setStatus('Calculated');renderMout();
 }
 function multiTable(){
-  const m=S.mres,names=m.items[0].wt.layers.map(l=>l.name);
-  const head=['Carton','Carton Size','Board Length','Board Width','Area (m²)',...names.map(n=>n+' (g)'),'Total (g)','Total (kg)'];
-  const body=m.items.map((it,i)=>[`Carton ${i+1}`,it.size,`${Engine.fmt(it.L,it.u)} ${it.u}`,`${Engine.fmt(it.W,it.u)} ${it.u}`,d(it.area,4),...it.wt.layers.map(l=>d(l.g,2)),d(it.wt.g,2),d(it.wt.kg,4)]);
+  const m=S.mres,names=m.items[0].wt.layers.map(l=>l.name),R=m.hasR;
+  const head=['Carton','Carton Size','Board Length','Board Width',...(R?['Reel Size','Boards Across','Trim','Production Length','Production Width','Production Area (m²)']:['Area (m²)']),...names.map(n=>n+' (g)'),'Total (g)','Total (kg)'];
+  const body=m.items.map((it,i)=>[`Carton ${i+1}`,it.size,`${Engine.fmt(it.L,it.u)} ${it.u}`,`${Engine.fmt(it.W,it.u)} ${it.u}`,
+    ...(R?[...(it.rl?[`${Engine.fmt(it.rl.reelCm,it.u)} ${it.u}`,it.rl.count,`${Engine.fmt(it.rl.trim,it.u)} ${it.u}`]:['','','']),`${Engine.fmt(it.pL,it.u)} ${it.u}`,`${Engine.fmt(it.pW,it.u)} ${it.u}`]:[]),
+    d(it.area,4),...it.wt.layers.map(l=>d(l.g,2)),d(it.wt.g,2),d(it.wt.kg,4)]);
   const sum=f=>m.items.reduce((a,it)=>a+f(it),0);
-  body.push(['Total','','','',d(sum(it=>it.area),4),...names.map((_,j)=>d(sum(it=>it.wt.layers[j].g),2)),d(sum(it=>it.wt.g),2),d(sum(it=>it.wt.kg),4)]);
+  body.push(['Total','','','',...(R?['','','','','']:[]),d(sum(it=>it.area),4),...names.map((_,j)=>d(sum(it=>it.wt.layers[j].g),2)),d(sum(it=>it.wt.g),2),d(sum(it=>it.wt.kg),4)]);
   return {head,body};
 }
 function renderMout(){
@@ -469,7 +543,7 @@ function renderMout(){
   if(!m){$('mout').innerHTML='<p class="cap">Enter the measurements and press calculate.</p>';return}
   const t=multiTable(),l0=m.items[0].wt.layers;
   $('mout').innerHTML=`<table class="wt"><tr>${t.head.map(x=>`<td>${x}</td>`).join('')}</tr>${t.body.map(r=>`<tr>${r.map(x=>`<td>${x}</td>`).join('')}</tr>`).join('')}</table>
-  <p class="cap" style="text-align:left">Allowances: length ${m.al.length} cm, width ${m.al.width} cm. GSM used: ${l0.map(l=>l.name+' '+l.gsm).join(', ')}. Calculated on ${m.time}.</p>
+  <p class="cap" style="text-align:left">Allowances: length ${m.al.length} cm, width ${m.al.width} cm.${m.hasR?` Reel fitted against board ${m.dim==='L'?'length':'width'}. Production size, area and weight are for one box (reel size divided by boards across). Cartons without a reel size use the calculated board size.`:''} GSM used: ${l0.map(l=>l.name+' '+l.gsm).join(', ')}. Calculated on ${m.time}.</p>
   <div class="notice">Estimated theoretical paper weight from nominal GSM. Actual production weight will differ. No wastage is applied.</div>`;
 }
 function dl(r,name){
