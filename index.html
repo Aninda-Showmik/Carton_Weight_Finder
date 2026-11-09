@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KPL Corrugated Board Calculator</title>
+<style>
+:root{--navy:#0b1f3a;--navy2:#13335c;--blue:#2f7fe0;--bg:#eef2f7;--card:#fff;--text:#14233a;--muted:#6a7a92;--line:#dbe3ee;--err:#c0392b;--ok:#1f9d63}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:linear-gradient(90deg,var(--navy),var(--navy2));color:#fff;display:flex;justify-content:space-between;align-items:center;padding:14px 24px;flex-wrap:wrap;gap:10px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{background:var(--blue);padding:8px 12px;border-radius:10px;font-weight:800;letter-spacing:1px}
+.brand b{font-size:1.1rem;display:block}.brand small{color:#a9bad3}
+.hr{display:flex;align-items:center;gap:16px}
+.status{display:flex;align-items:center;gap:6px;font-size:.85rem;color:#cfe0f7}
+.status i{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+main{max-width:1200px;margin:20px auto;padding:0 16px;display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 16px rgba(11,31,58,.06)}
+.card h2{margin:0 0 14px;font-size:.8rem;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.wide{grid-column:1/-1}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:block;font-size:.82rem;font-weight:600;color:var(--muted);margin-bottom:12px}
+input,select{width:100%;margin-top:5px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;color:var(--text);background:#fff;transition:border .15s,box-shadow .15s}
+input:focus,select:focus{outline:0;border-color:var(--blue);box-shadow:0 0 0 3px rgba(47,127,224,.18)}
+input.bad{border-color:var(--err)}
+.err{color:var(--err);font-size:.76rem;font-weight:500;min-height:0}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--text);padding:8px 14px;transition:.15s}
+button:hover{border-color:var(--blue);color:var(--blue)}
+header button{background:transparent;color:#fff;border-color:#5a7499}
+.primary{width:100%;background:var(--blue);color:#fff;border:0;padding:14px;font-weight:700;letter-spacing:.8px;margin-top:6px}
+.primary:hover{background:#1f6ccb;color:#fff}
+.notice{background:#fff6e0;border:1px solid #f0d58a;border-radius:10px;padding:10px 12px;font-size:.85rem;margin-bottom:12px}
+.flutes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{background:#e8f1fd;color:var(--navy2);border-radius:20px;padding:4px 12px;font-size:.8rem;font-weight:600}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.stat{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:14px;padding:18px}
+.stat span{font-size:.75rem;letter-spacing:1.4px;color:#a9bad3}
+.stat b{display:block;font-size:2rem;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+td{padding:7px 4px;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-weight:600}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.viz{display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:center}
+.scene{height:250px;perspective:700px;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab;background:radial-gradient(#f4f8fe,#e4ecf7);border-radius:12px}
+.cube{position:relative;transform-style:preserve-3d;width:0;height:0}
+.f{position:absolute;left:50%;top:50%;background:rgba(201,152,84,.92);border:2px solid #8a5f2b;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#5a3b14;font-weight:700}
+.cap{text-align:center;color:var(--muted);font-size:.82rem;margin:8px 0 0}
+.steps{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem;background:#f6f9fd;border-radius:10px;padding:14px;white-space:pre-wrap;min-height:60px}
+.layerrow{display:grid;grid-template-columns:minmax(220px,1fr) minmax(140px,200px);gap:14px;max-width:560px}
+.wt td{text-align:right;font-weight:400}.wt td:first-child{text-align:left}.wt tr:first-child td,.wt tr:last-child td{font-weight:700}
+.wt tr:first-child td{color:var(--muted)}
+.tbl{overflow-x:auto}
+@media(max-width:860px){main{grid-template-columns:1fr}.viz{grid-template-columns:1fr}}
+@media print{header button,.actions,#inputs,#clearSteps,.scene{display:none}main{display:block}.card{box-shadow:none;margin-bottom:12px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">KPL</span><div><b>Corrugated Board Calculator</b><small>Manufacturing and Engineering Application</small></div></div>
+  <div class="hr"><span class="status"><i></i><em id="status">Ready</em></span><button id="reset">Reset</button></div>
+</header>
+
+<main>
+<section class="card" id="inputs">
+  <h2>Input</h2>
+  <label>Carton Type<select id="type"></select></label>
+  <div class="two">
+    <label>Measurement Unit<select id="unit"><option value="cm">Centimeter (cm)</option><option value="mm">Millimeter (mm)</option><option value="in">Inch (in)</option></select></label>
+    <label id="plyWrap">Ply Configuration<select id="ply"><option value="3">3 Ply</option><option value="5">5 Ply</option></select></label>
+  </div>
+  <div class="flutes" id="flutes"></div>
+  <div id="fields"></div>
+  <div class="notice" id="notice" hidden></div>
+  <button class="primary" id="calc">CALCULATE BOARD DIMENSIONS</button>
+</section>
+
+<section class="card" id="results">
+  <h2>Results</h2>
+  <div class="big">
+    <div class="stat"><span>BOARD LENGTH</span><b id="oL">0</b></div>
+    <div class="stat"><span>BOARD WIDTH</span><b id="oW">0</b></div>
+  </div>
+  <table id="summary"></table>
+  <div class="actions"><button id="copy">Copy Dimensions</button><button id="csv">Export CSV</button><button id="print">Print</button></div>
+</section>
+
+<section class="card wide" id="gsmCard">
+  <h2>GSM Selection and Board Weight</h2>
+  <div id="gsmLayers"></div>
+  <div class="two" style="max-width:560px"><label>Production Quantity (optional, pcs)<input id="qty" type="text" inputmode="numeric" placeholder="0"><span class="err" id="e_qty"></span></label></div>
+  <button class="primary" id="wcalc" style="max-width:560px">CALCULATE BOARD WEIGHT</button>
+  <div id="wout"></div>
+</section>
+
+<section class="card wide">
+  <h2>Visualization</h2>
+  <div class="viz">
+    <div><svg id="plySvg" viewBox="0 0 560 250" width="100%" role="img" aria-label="Corrugated board cross-section"></svg></div>
+    <div><div class="scene" id="scene"><div class="cube" id="cube"></div></div><p class="cap" id="cap"></p></div>
+  </div>
+</section>
+
+<section class="card wide">
+  <h2>Calculation Details</h2>
+  <div class="steps" id="steps">Enter dimensions and press calculate.</div>
+  <div class="steps" id="wsteps" style="margin-top:12px"></div>
+  <div class="actions"><button id="clearSteps">Clear Breakdown</button></div>
+</section>
+</main>
+
+<script>
+/* ===== 1. CONFIG: manufacturing constants (edit here only) ===== */
+const CFG = {
+  units: { cm:{f:1, d:2}, mm:{f:10, d:1}, in:{f:1/2.54, d:3} },   // f = units per cm
+  allowance: { length:5, width:4 },                               // cm
+  flutes: { B:1.40, C:1.46 },                                     // display only, not applied to board dimensions
+  // Predefined GSM choices per paper role (L = liner, B/C = fluting medium). Placeholder grades: replace with KPL approved values.
+  gsmOptions: {
+    L:[100,110,120,125,140,150,160,180,200,230,250,280],
+    B:[100,110,120,127,140,150,160],
+    C:[100,110,120,127,140,150,160,180]
+  },
+  plies: {
+    3: [['Outer Liner','L'],['C Flute','C'],['Inner Liner','L']],
+    5: [['Outer Liner','L'],['B Flute','B'],['Middle Liner','L'],['C Flute','C'],['Inner Liner','L']]
+  },
+  cartons: {
+    master:  { label:'Master Carton', ready:true,  hasPly:true,  fields:[['l','Carton Length'],['w','Carton Width'],['h','Carton Height']] },
+    hanger:  { label:'Hanger Carton', ready:false, hasPly:false, fields:[['l','Carton Length'],['w','Carton Width'],['h','Carton Height']] },
+    shoe:    { label:'Shoe Box',      ready:false, hasPly:false, fields:[['l','Carton Length'],['w','Carton Width'],['h','Carton Height']] },
+    divider: { label:'Divider',       ready:false, hasPly:false, fields:[['d1','Dimension 1'],['d2','Dimension 2']] }
+  }
+};
+
+/* ===== 2. ENGINE: no DOM access ===== */
+const Engine = {
+  toCm:(v,u)=>v/CFG.units[u].f,
+  fromCm:(c,u)=>c*CFG.units[u].f,
+  fmt:(c,u)=>String(+Engine.fromCm(c,u).toFixed(CFG.units[u].d)),
+  validate(raw){                                   // raw: string -> {ok, value|msg}
+    const s=String(raw).trim();
+    if(s==='') return {ok:false,msg:'Required'};
+    const n=Number(s);
+    if(!isFinite(n)) return {ok:false,msg:'Must be a number'};
+    if(n<=0) return {ok:false,msg:'Must be greater than zero'};
+    return {ok:true,value:n};
+  },
+  // GSM and weight module: kept separate from dimensions. Inputs in cm; no wastage or other assumptions applied.
+  weight(Lcm,Wcm,layers,qty){
+    const area=Lcm*Wcm;
+    const out=layers.map(x=>{const f=x.t==='L'?1:CFG.flutes[x.t],eff=x.gsm*f;return {...x,f,eff,g:area*eff/10000}});
+    const gsm=out.reduce((a,x)=>a+x.eff,0),g=area*gsm/10000;
+    return {layers:out,gsm,g,kg:g/1000,qty,qtyKg:qty?g*qty/1000:null};
+  },
+  master({l,w,h}){                                 // all values in cm
+    return { L: 2*(l+w)+CFG.allowance.length, W: w+h+CFG.allowance.width };
+  }
+};
+
+/* ===== 3. UI ===== */
+const $=id=>document.getElementById(id);
+const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null};
+const d=(x,n)=>String(+x.toFixed(n));
+
+function init(){
+  $('type').innerHTML=Object.entries(CFG.cartons).map(([k,c])=>`<option value="${k}">${c.label}</option>`).join('');
+  $('type').onchange=()=>{S.type=$('type').value;S.vals={};S.result=null;S.wres=null;S.gsm={3:{},5:{}};S.qty='';renderAll()};
+  $('ply').onchange=()=>{S.ply=$('ply').value;S.wres=null;renderFlutes();drawPly();renderGsm();renderWeight()};
+  $('unit').onchange=changeUnit;
+  $('calc').onclick=calculate;
+  $('wcalc').onclick=calcWeight;
+  $('qty').oninput=e=>{S.qty=e.target.value;$('e_qty').textContent=''};
+  $('reset').onclick=reset;
+  $('copy').onclick=copyDims;
+  $('csv').onclick=exportCsv;
+  $('print').onclick=()=>window.print();
+  $('clearSteps').onclick=()=>{$('steps').textContent='Breakdown cleared.';$('wsteps').textContent=''};
+  initCube();renderAll();
+}
+
+function renderAll(){
+  const c=CFG.cartons[S.type];
+  $('plyWrap').style.display=c.hasPly?'':'none';
+  $('notice').hidden=c.ready;
+  $('notice').textContent=c.ready?'':`${c.label} formulas have not been provided yet. Inputs are ready, calculation will be enabled once the specification is confirmed.`;
+  $('fields').innerHTML=c.fields.map(([k,n])=>`<label>${n} (<span class="u">${S.unit}</span>)<input id="f_${k}" type="text" inputmode="decimal" placeholder="0" value="${S.vals[k]||''}"><span class="err" id="e_${k}"></span></label>`).join('');
+  c.fields.forEach(([k])=>$('f_'+k).oninput=e=>{S.vals[k]=e.target.value;e.target.classList.remove('bad');$('e_'+k).textContent='';updateCube()});
+  renderFlutes();drawPly();updateCube();renderResult();renderGsm();renderWeight();
+}
+
+function renderFlutes(){
+  const c=CFG.cartons[S.type];
+  $('flutes').innerHTML=c.hasPly?[...new Set(CFG.plies[S.ply].filter(x=>x[1]!=='L').map(x=>x[1]))].map(k=>`<span class="chip">${k} Flute: ${CFG.flutes[k].toFixed(2)}</span>`).join(''):'';
+}
+
+function changeUnit(){
+  const old=S.unit,nu=$('unit').value,c=CFG.cartons[S.type];
+  c.fields.forEach(([k])=>{
+    const v=Engine.validate(S.vals[k]||'');
+    if(v.ok) S.vals[k]=String(+(Engine.fromCm(Engine.toCm(v.value,old),nu)).toFixed(4));
+  });
+  S.unit=nu;
+  renderAll();
+}
+
+function calculate(){
+  const c=CFG.cartons[S.type];
+  let ok=true;const cm={};
+  c.fields.forEach(([k])=>{
+    const v=Engine.validate(S.vals[k]||'');
+    $('f_'+k).classList.toggle('bad',!v.ok);$('e_'+k).textContent=v.ok?'':v.msg;
+    if(v.ok) cm[k]=Engine.toCm(v.value,S.unit); else ok=false;
+  });
+  if(!ok){setStatus('Check inputs',true);return}
+  if(!c.ready){setStatus('Formula pending',true);return}
+  const r=Engine.master(cm);
+  S.result={type:S.type,ply:S.ply,cm,L:r.L,W:r.W,time:new Date().toLocaleString()};
+  S.wres=null;setStatus('Calculated');renderResult();renderWeight();
+}
+
+function setStatus(t,warn){$('status').textContent=t;document.querySelector('.status i').style.background=warn?'#e6a23c':'#1f9d63'}
+
+function rows(){
+  const r=S.result;if(!r) return [];
+  const u=S.unit,f=v=>Engine.fmt(v,u)+' '+u,fl=CFG.plies[r.ply].filter(x=>x[1]!=='L').map(x=>x[1]);
+  return [
+    ['Carton Type',CFG.cartons[r.type].label],['Ply Configuration',r.ply+' Ply'],
+    ['Flute Configuration',[...new Set(fl)].map(k=>k+' Flute').join(' and ')],
+    ['Flute Factors',[...new Set(fl)].map(k=>k+' = '+CFG.flutes[k].toFixed(2)).join(', ')],
+    ['Carton Length',f(r.cm.l)],['Carton Width',f(r.cm.w)],['Carton Height',f(r.cm.h)],
+    ['Length Allowance',f(CFG.allowance.length)],['Width Allowance',f(CFG.allowance.width)],
+    ['Board Length',f(r.L)],['Board Width',f(r.W)],['Calculated On',r.time]
+  ];
+}
+
+function renderResult(){
+  const r=S.result,u=S.unit;
+  $('oL').textContent=r?Engine.fmt(r.L,u)+' '+u:'0';
+  $('oW').textContent=r?Engine.fmt(r.W,u)+' '+u:'0';
+  $('summary').innerHTML=rows().map(([a,b])=>`<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+  if(!r) return;
+  const F=v=>Engine.fmt(v,u),A=F(CFG.allowance.length),B=F(CFG.allowance.width),l=F(r.cm.l),w=F(r.cm.w),h=F(r.cm.h);
+  const sum=F(r.cm.l+r.cm.w),twice=F(2*(r.cm.l+r.cm.w)),wh=F(r.cm.w+r.cm.h);
+  $('steps').textContent=
+`Unit: ${u} (calculated internally in cm)
+
+Board Length = 2 × (Length + Width) + ${A} ${u}
+             = 2 × (${l} + ${w}) + ${A}
+             = 2 × ${sum} + ${A}
+             = ${twice} + ${A}
+             = ${F(r.L)} ${u}
+
+Board Width  = Width + Height + ${B} ${u}
+             = ${w} + ${h} + ${B}
+             = ${wh} + ${B}
+             = ${F(r.W)} ${u}
+
+Flute factors are listed for reference and are not applied to these board dimensions.
+Calculated on ${r.time}`;
+}
+
+function reset(){
+  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null});
+  $('type').value='master';$('unit').value='cm';$('ply').value='3';
+  setStatus('Ready');$('steps').textContent='Enter dimensions and press calculate.';renderAll();
+}
+
+function copyDims(){
+  if(!S.result){setStatus('Nothing to copy',true);return}
+  const t=`Board Length: ${$('oL').textContent}, Board Width: ${$('oW').textContent}`;
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>setStatus('Copied')).catch(()=>{prompt('Copy:',t)});
+}
+
+function exportCsv(){
+  if(!S.result){setStatus('Nothing to export',true);return}
+  const csv=rows().concat(weightRows()).map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));
+  a.download='kpl-board-calculation.csv';a.click();URL.revokeObjectURL(a.href);
+}
+
+/* ===== 3b. GSM AND WEIGHT UI ===== */
+function renderGsm(){
+  const c=CFG.cartons[S.type];
+  $('gsmCard').hidden=!c.hasPly;
+  if(!c.hasPly) return;
+  $('qty').value=S.qty;
+  const st=S.gsm[S.ply];
+  $('gsmLayers').innerHTML=CFG.plies[S.ply].map(([name,t],i)=>{
+    const s=st[i]||{sel:'',custom:''};
+    const tag=t==='L'?'':` (take-up ${CFG.flutes[t].toFixed(2)})`;
+    return `<div class="layerrow"><label>${i+1}. ${name} GSM${tag}<select id="g_${i}"><option value="">Select GSM</option>${CFG.gsmOptions[t].map(v=>`<option ${s.sel==String(v)?'selected':''}>${v}</option>`).join('')}<option value="custom" ${s.sel==='custom'?'selected':''}>Custom</option></select><span class="err" id="ge_${i}"></span></label><label style="display:${s.sel==='custom'?'block':'none'}">Custom GSM<input id="c_${i}" type="text" inputmode="decimal" placeholder="0" value="${s.custom||''}"></label></div>`;
+  }).join('');
+  CFG.plies[S.ply].forEach((_,i)=>{
+    $('g_'+i).onchange=e=>{st[i]={...st[i],sel:e.target.value};S.wres=null;renderGsm();renderWeight()};
+    $('c_'+i).oninput=e=>{st[i]={...st[i],custom:e.target.value};$('ge_'+i).textContent=''};
+  });
+}
+
+function calcWeight(){
+  if(!S.result){
+    $('wout').innerHTML='<div class="notice" style="margin-top:12px">Calculate the board dimensions first, then calculate the weight.</div>';
+    setStatus('Dimensions needed',true);return;
+  }
+  const st=S.gsm[S.ply],list=[];let ok=true;
+  CFG.plies[S.ply].forEach(([name,t],i)=>{
+    const s=st[i]||{};
+    const raw=s.sel==='custom'?s.custom:s.sel;
+    const v=Engine.validate(raw||'');
+    $('ge_'+i).textContent=v.ok?'':(s.sel?v.msg:'Select a GSM');
+    if(v.ok) list.push({name,t,gsm:v.value}); else ok=false;
+  });
+  let q=null;
+  if(S.qty.trim()!==''){
+    const v=Engine.validate(S.qty);
+    $('e_qty').textContent=v.ok?'':v.msg;
+    if(v.ok) q=v.value; else ok=false;
+  }
+  if(!ok){setStatus('Check GSM inputs',true);return}
+  S.wres={...Engine.weight(S.result.L,S.result.W,list,q),L:S.result.L,W:S.result.W,ply:S.ply,time:new Date().toLocaleString()};
+  setStatus('Weight calculated');renderWeight();
+}
+
+function renderWeight(){
+  const w=S.wres;
+  if(!w){$('wout').innerHTML='';$('wsteps').textContent='';return}
+  const u=S.unit,F=v=>Engine.fmt(v,u),hasQ=w.qty!=null;
+  const flutes=[...new Set(w.layers.filter(x=>x.t!=='L').map(x=>x.t))];
+  let h=`<div class="big" style="margin-top:16px"><div class="stat"><span>WEIGHT PER BOARD (g)</span><b>${d(w.g,2)} g</b></div><div class="stat"><span>WEIGHT PER BOARD (kg)</span><b>${d(w.kg,4)} kg</b></div></div>`;
+  h+=`<div class="tbl"><table class="wt"><tr><td>Layer</td><td>GSM</td><td>Take-up</td><td>Effective GSM</td><td>Weight per board (g)</td>${hasQ?'<td>Weight for quantity (kg)</td>':''}</tr>`;
+  h+=w.layers.map(l=>`<tr><td>${l.name}</td><td>${l.gsm}</td><td>${l.f.toFixed(2)}</td><td>${d(l.eff,2)}</td><td>${d(l.g,2)}</td>${hasQ?`<td>${d(l.g*w.qty/1000,3)}</td>`:''}</tr>`).join('');
+  h+=`<tr><td>Total</td><td></td><td></td><td>${d(w.gsm,2)}</td><td>${d(w.g,2)}</td>${hasQ?`<td>${d(w.qtyKg,3)}</td>`:''}</tr></table></div>`;
+  h+=`<table style="margin-top:14px"><tr><td>Board Length</td><td>${F(w.L)} ${u}</td></tr><tr><td>Board Width</td><td>${F(w.W)} ${u}</td></tr><tr><td>Flute Take-up Factors</td><td>${flutes.map(k=>k+' = '+CFG.flutes[k].toFixed(2)).join(', ')}</td></tr><tr><td>Effective Total Board GSM</td><td>${d(w.gsm,2)}</td></tr><tr><td>Estimated Weight (g)</td><td>${d(w.g,2)} g</td></tr><tr><td>Estimated Weight (kg)</td><td>${d(w.kg,4)} kg</td></tr>${hasQ?`<tr><td>Production Quantity</td><td>${w.qty} pcs</td></tr><tr><td>Theoretical Paper Consumption</td><td>${d(w.qtyKg,3)} kg</td></tr>`:''}</table>`;
+  h+=`<div class="notice" style="margin-top:14px">This is an estimated theoretical paper weight from nominal GSM and flat blank size. Actual production weight will differ. No wastage, trim loss, moisture or tolerance is applied.</div>`;
+  $('wout').innerHTML=h;
+  const L=d(w.L,4),W=d(w.W,4);
+  $('wsteps').textContent=
+`Board Weight (g) = Board Length (cm) × Board Width (cm) × Effective Total GSM / 10,000
+
+Effective GSM per layer
+${w.layers.map((l,i)=>`  ${i+1}. ${l.name}: ${l.gsm} × ${l.f} = ${d(l.eff,2)}`).join('\n')}
+
+Effective Total GSM = ${w.layers.map(l=>d(l.eff,2)).join(' + ')} = ${d(w.gsm,2)}
+
+Board size = ${L} cm × ${W} cm
+Weight (g) = ${L} × ${W} × ${d(w.gsm,2)} / 10,000 = ${d(w.g,2)} g
+Weight (kg) = ${d(w.g,2)} / 1,000 = ${d(w.kg,4)} kg${hasQ?`
+
+Quantity ${w.qty} pcs: ${d(w.g,2)} g × ${w.qty} / 1,000 = ${d(w.qtyKg,3)} kg`:''}
+
+Theoretical estimate only. No wastage applied.`;
+}
+
+function weightRows(){
+  const w=S.wres;if(!w) return [];
+  return [['',''],['GSM and Weight (theoretical estimate)',w.time],
+    ...w.layers.map(l=>[l.name+' GSM',`${l.gsm} x ${l.f} = ${d(l.eff,2)} effective, ${d(l.g,2)} g`]),
+    ['Effective Total GSM',d(w.gsm,2)],['Weight per Board (g)',d(w.g,2)],['Weight per Board (kg)',d(w.kg,4)],
+    ...(w.qty!=null?[['Production Quantity',w.qty],['Theoretical Paper Consumption (kg)',d(w.qtyKg,3)]]:[])];
+}
+
+/* ===== 4. VISUALS ===== */
+function drawPly(){
+  const layers=CFG.plies[S.ply],LINER=16,BAND=48,X0=20,W=420,P=28;
+  const col={L:'#b9854a',B:'#e3b66f',C:'#d08a3a'};
+  let y=15,out='';
+  layers.forEach(([name,t],i)=>{
+    if(t==='L'){
+      out+=`<rect x="${X0}" y="${y}" width="${W}" height="${LINER}" fill="${col.L}" stroke="#7a5424"/>`;
+      out+=`<text x="${X0+W+12}" y="${y+LINER/2+4}" font-size="13" fill="#14233a">${i+1}. ${name}</text>`;
+      y+=LINER;
+    }else{
+      const mid=y+BAND/2,amp=(BAND-8)/2;let d=`M${X0},${mid}`;
+      for(let k=0;k<W/(P/2);k++) d+=` Q${X0+k*P/2+P/4},${mid+(k%2?1:-1)*amp*2} ${X0+(k+1)*P/2},${mid}`;
+      out+=`<rect x="${X0}" y="${y}" width="${W}" height="${BAND}" fill="#fbf3e6"/><path d="${d}" fill="none" stroke="${col[t]}" stroke-width="6"/>`;
+      out+=`<text x="${X0+W+12}" y="${mid+4}" font-size="13" fill="#14233a">${i+1}. ${name} (${CFG.flutes[t].toFixed(2)})</text>`;
+      y+=BAND;
+    }
+  });
+  $('plySvg').setAttribute('viewBox',`0 0 600 ${y+15}`);
+  $('plySvg').innerHTML=out;
+}
+
+let rx=-22,ry=-32;
+function initCube(){
+  const faces=['front','back','right','left','top','bottom'];
+  $('cube').innerHTML=faces.map(f=>`<div class="f" data-f="${f}"></div>`).join('');
+  const sc=$('scene');let drag=null;
+  sc.onpointerdown=e=>{drag=[e.clientX,e.clientY,rx,ry];sc.setPointerCapture(e.pointerId);sc.style.cursor='grabbing'};
+  sc.onpointermove=e=>{if(!drag)return;ry=drag[3]+(e.clientX-drag[0])*.6;rx=drag[2]-(e.clientY-drag[1])*.6;spin()};
+  sc.onpointerup=()=>{drag=null;sc.style.cursor='grab'};
+}
+function spin(){$('cube').style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`}
+function updateCube(){
+  const g=k=>{const v=Engine.validate(S.vals[k]||'');return v.ok?v.value:null};
+  const c=CFG.cartons[S.type];
+  const keys=c.fields.length===3?['l','w','h']:null;
+  let l=40,w=30,h=20,real=false;
+  if(keys){const a=g('l'),b=g('w'),d=g('h');if(a&&b&&d){l=a;w=b;h=d;real=true}}
+  const s=140/Math.max(l,w,h),X=l*s,Z=w*s,Y=h*s;
+  const set=(f,wd,ht,tr,txt)=>{const e=document.querySelector(`[data-f=${f}]`);Object.assign(e.style,{width:wd+'px',height:ht+'px',marginLeft:-wd/2+'px',marginTop:-ht/2+'px',transform:tr});e.textContent=txt};
+  set('front',X,Y,`translateZ(${Z/2}px)`,'L × H');
+  set('back',X,Y,`rotateY(180deg) translateZ(${Z/2}px)`,'');
+  set('right',Z,Y,`rotateY(90deg) translateZ(${X/2}px)`,'W × H');
+  set('left',Z,Y,`rotateY(-90deg) translateZ(${X/2}px)`,'');
+  set('top',X,Z,`rotateX(90deg) translateZ(${Y/2}px)`,'L × W');
+  set('bottom',X,Z,`rotateX(-90deg) translateZ(${Y/2}px)`,'');
+  spin();
+  $('cap').textContent=keys?(real?`L ${S.vals.l} × W ${S.vals.w} × H ${S.vals.h} ${S.unit} (drag to rotate)`:'Sample proportions shown. Enter L, W and H to update.'):'Preview available for three dimension carton types.';
+}
+init();
+</script>
+</body>
+</html>
