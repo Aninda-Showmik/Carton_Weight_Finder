@@ -55,7 +55,7 @@ nav{display:flex;gap:8px}
 .tab.on{background:#fff;color:var(--navy);border-color:#fff}
 details.card>summary{cursor:pointer;font-size:.8rem;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
 details.card[open]>summary{margin-bottom:14px}
-.mrow{display:grid;grid-template-columns:80px repeat(3,minmax(80px,1fr));gap:10px;align-items:end;margin-bottom:6px}
+.mrow{display:grid;grid-template-columns:80px repeat(3,minmax(70px,1fr)) 90px;gap:10px;align-items:end;margin-bottom:6px}
 .mrow label{margin:0}.mrow b{padding-bottom:10px}
 @media(max-width:860px){main{grid-template-columns:1fr}.viz{grid-template-columns:1fr}}
 @media print{header button,.actions,#mset,#mrowsCard,#inputs,#clearSteps,.scene{display:none}main{display:block}.card{box-shadow:none;margin-bottom:12px}}
@@ -121,7 +121,7 @@ details.card[open]>summary{margin-bottom:14px}
 <main id="multi" hidden>
 <section class="card" id="mset">
   <h2>Multiple Carton Settings</h2>
-  <div class="two"><label>Number of Cartons<select id="mn"></select></label><label>Measurement Unit<select id="munit"></select></label></div>
+  <div class="two"><label>Number of Cartons<select id="mn"></select></label><span></span></div>
   <div class="two"><label>Ply Configuration<select id="mply"></select></label><span></span></div>
   <div class="two"><label>Length Allowance (cm)<select id="malL"></select></label><label>Width Allowance (cm)<select id="malW"></select></label></div>
   <h2>Paper GSM</h2>
@@ -185,7 +185,7 @@ const Engine = {
 /* ===== 3. UI ===== */
 const $=id=>document.getElementById(id);
 const alDef=()=>({length:CFG.allowance.length,width:CFG.allowance.width});
-const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:''}));
+const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:'',u:'cm'}));
 const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null};
 const d=(x,n)=>String(+x.toFixed(n));
 
@@ -222,7 +222,7 @@ function renderFlutes(){
 function setUnit(nu){
   const old=S.unit;
   const cv=o=>Object.keys(o).forEach(k=>{const v=Engine.validate(o[k]||'');if(v.ok)o[k]=String(+Engine.fromCm(Engine.toCm(v.value,old),nu).toFixed(4))});
-  cv(S.vals);S.rows.forEach(cv);S.unit=nu;renderAll();
+  cv(S.vals);S.unit=nu;renderAll();
 }
 function setPly(v){S.ply=v;S.wres=null;S.mres=null;renderFlutes();drawPly();renderGsm();renderWeight();renderMout();syncControls()}
 function setAl(k,v){
@@ -232,11 +232,11 @@ function setAl(k,v){
   renderWeight();if(b)calcMulti();else renderMout();
 }
 function syncControls(){
-  ['','m'].forEach(p=>{$(p+'unit').value=S.unit;$(p+'ply').value=S.ply;$(p+'alL').value=S.al.length;$(p+'alW').value=S.al.width});
+  ['','m'].forEach(p=>{if(!p)$('unit').value=S.unit;$(p+'ply').value=S.ply;$(p+'alL').value=S.al.length;$(p+'alW').value=S.al.width});
   $('mn').value=S.n;
 }
 function initControls(){
-  $('munit').innerHTML=$('unit').innerHTML;$('mply').innerHTML=$('ply').innerHTML;
+  $('mply').innerHTML=$('ply').innerHTML;
   $('mn').innerHTML=[2,3,4,5,6].map(n=>`<option>${n}</option>`).join('');
   $('mn').onchange=e=>{S.n=+e.target.value;S.mres=null;renderMulti()};
   const opts=CFG.allowance.options.map(v=>`<option>${v}</option>`).join('');
@@ -244,7 +244,7 @@ function initControls(){
     $(p+'alL').innerHTML=opts;$(p+'alW').innerHTML=opts;
     $(p+'alL').onchange=e=>setAl('length',e.target.value);
     $(p+'alW').onchange=e=>setAl('width',e.target.value);
-    $(p+'unit').onchange=e=>setUnit(e.target.value);
+    if(!p)$('unit').onchange=e=>setUnit(e.target.value);
     $(p+'ply').onchange=e=>setPly(e.target.value);
   });
   $('mcalc').onclick=calcMulti;$('mprint').onclick=()=>window.print();
@@ -426,32 +426,42 @@ function weightRows(){
 /* ===== 3c. MULTIPLE CARTONS ===== */
 function renderMulti(){renderRows();renderMout()}
 function renderRows(){
-  const u=S.unit,nm={l:'Length',w:'Width',h:'Height'};
-  $('mrows').innerHTML=Array.from({length:S.n},(_,i)=>`<div class="mrow"><b>Carton ${i+1}</b>${['l','w','h'].map(k=>`<label>${nm[k]} (${u})<input id="r_${i}_${k}" type="text" inputmode="decimal" placeholder="0" value="${S.rows[i][k]}"></label>`).join('')}<span class="err" id="re_${i}" style="grid-column:1/-1"></span></div>`).join('');
-  for(let i=0;i<S.n;i++)['l','w','h'].forEach(k=>$(`r_${i}_${k}`).oninput=e=>{S.rows[i][k]=e.target.value;e.target.classList.remove('bad');$('re_'+i).textContent=''});
+  const nm={l:'Length',w:'Width',h:'Height'};
+  $('mrows').innerHTML=Array.from({length:S.n},(_,i)=>{
+    const r=S.rows[i];
+    return `<div class="mrow"><b>Carton ${i+1}</b>${['l','w','h'].map(k=>`<label>${nm[k]} (${r.u})<input id="r_${i}_${k}" type="text" inputmode="decimal" placeholder="0" value="${r[k]}"></label>`).join('')}<label>Unit<select id="ru_${i}">${['cm','mm','in'].map(x=>`<option ${r.u===x?'selected':''}>${x}</option>`).join('')}</select></label><span class="err" id="re_${i}" style="grid-column:1/-1"></span></div>`;
+  }).join('');
+  for(let i=0;i<S.n;i++){
+    ['l','w','h'].forEach(k=>$(`r_${i}_${k}`).oninput=e=>{S.rows[i][k]=e.target.value;e.target.classList.remove('bad');$('re_'+i).textContent=''});
+    $('ru_'+i).onchange=e=>{
+      const r=S.rows[i],nu=e.target.value;
+      ['l','w','h'].forEach(k=>{const v=Engine.validate(r[k]||'');if(v.ok)r[k]=String(+Engine.fromCm(Engine.toCm(v.value,r.u),nu).toFixed(4))});
+      r.u=nu;renderRows();
+    };
+  }
 }
 function calcMulti(){
   const gl=collectGsm('m');let ok=!!gl;const items=[];
   for(let i=0;i<S.n;i++){
-    const cm={},errs=[];
+    const u=S.rows[i].u,cm={},ent={},errs=[];
     ['l','w','h'].forEach(k=>{
       const v=Engine.validate(S.rows[i][k]||'');
       $(`r_${i}_${k}`).classList.toggle('bad',!v.ok);
-      if(v.ok) cm[k]=Engine.toCm(v.value,S.unit); else errs.push(k.toUpperCase()+': '+v.msg);
+      if(v.ok){cm[k]=Engine.toCm(v.value,u);ent[k]=v.value}else errs.push(k.toUpperCase()+': '+v.msg);
     });
     $('re_'+i).textContent=errs.join(', ');
-    if(errs.length) ok=false; else items.push(cm);
+    if(errs.length) ok=false; else items.push({cm,u,size:`${d(ent.l,4)}X${d(ent.w,4)}X${d(ent.h,4)} ${u}`});
   }
   if(!ok){setStatus('Check inputs',true);return}
-  S.mres={al:{...S.al},time:new Date().toLocaleString(),items:items.map(cm=>{const b=Engine.master(cm,S.al);return {cm,...b,wt:Engine.weight(b.L,b.W,gl,null)}})};
+  S.mres={al:{...S.al},time:new Date().toLocaleString(),items:items.map(o=>{const b=Engine.master(o.cm,S.al);return {...o,...b,wt:Engine.weight(b.L,b.W,gl,null)}})};
   setStatus('Calculated');renderMout();
 }
 function multiTable(){
-  const m=S.mres,u=S.unit,F=v=>Engine.fmt(v,u),names=m.items[0].wt.layers.map(l=>l.name);
-  const head=['Carton',`Board Length (${u})`,`Board Width (${u})`,'Area (m²)',...names.map(n=>n+' (g)'),'Total (g)','Total (kg)'];
-  const body=m.items.map((it,i)=>[`Carton ${i+1}`,F(it.L),F(it.W),d(it.area,4),...it.wt.layers.map(l=>d(l.g,2)),d(it.wt.g,2),d(it.wt.kg,4)]);
+  const m=S.mres,names=m.items[0].wt.layers.map(l=>l.name);
+  const head=['Carton','Carton Size','Board Length','Board Width','Area (m²)',...names.map(n=>n+' (g)'),'Total (g)','Total (kg)'];
+  const body=m.items.map((it,i)=>[`Carton ${i+1}`,it.size,`${Engine.fmt(it.L,it.u)} ${it.u}`,`${Engine.fmt(it.W,it.u)} ${it.u}`,d(it.area,4),...it.wt.layers.map(l=>d(l.g,2)),d(it.wt.g,2),d(it.wt.kg,4)]);
   const sum=f=>m.items.reduce((a,it)=>a+f(it),0);
-  body.push(['Total','','',d(sum(it=>it.area),4),...names.map((_,j)=>d(sum(it=>it.wt.layers[j].g),2)),d(sum(it=>it.wt.g),2),d(sum(it=>it.wt.kg),4)]);
+  body.push(['Total','','','',d(sum(it=>it.area),4),...names.map((_,j)=>d(sum(it=>it.wt.layers[j].g),2)),d(sum(it=>it.wt.g),2),d(sum(it=>it.wt.kg),4)]);
   return {head,body};
 }
 function renderMout(){
