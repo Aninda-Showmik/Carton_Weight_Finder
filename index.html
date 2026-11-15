@@ -51,20 +51,25 @@ td{padding:7px 4px;border-bottom:1px solid var(--line)}td:last-child{text-align:
 .wt td{text-align:right;font-weight:400}.wt td:first-child{text-align:left}.wt tr:first-child td,.wt tr:last-child td{font-weight:700}
 .wt tr:first-child td{color:var(--muted)}
 .tbl{overflow-x:auto}
-nav{display:flex;gap:8px}
+nav{display:flex;gap:8px;flex-wrap:wrap}
+textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;color:var(--text)}
+th{font-size:.78rem;color:var(--muted);text-align:left;padding:6px 4px}
+.mt td{text-align:right;font-weight:400}.mt td:first-child,.mt td:nth-child(2){text-align:left}
+.mt tr:first-child td{font-weight:700;color:var(--muted)}.mt tr.ok td{background:#e9f7ef}.mt tr.best td{font-weight:700}.mt tr.no td{color:var(--muted)}
+#sbody td{padding:3px 4px}#sbody input{margin:0;padding:7px 9px}
 .tab.on{background:#fff;color:var(--navy);border-color:#fff}
 details.card>summary{cursor:pointer;font-size:.8rem;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
 details.card[open]>summary{margin-bottom:14px}
 .mrow{display:grid;grid-template-columns:80px repeat(3,minmax(70px,1fr)) 90px;gap:10px;align-items:end;margin-bottom:6px}
 .mrow label{margin:0}.mrow b{padding-bottom:10px}
 @media(max-width:860px){main{grid-template-columns:1fr}.viz{grid-template-columns:1fr}}
-@media print{header button,.actions,#mset,#mrowsCard,#inputs,#clearSteps,.scene{display:none}main{display:block}.card{box-shadow:none;margin-bottom:12px}}
+@media print{header button,.actions,#mset,#mrowsCard,#sorder,#slist,#inputs,#clearSteps,.scene{display:none}main{display:block}.card{box-shadow:none;margin-bottom:12px}}
 </style>
 </head>
 <body>
 <header>
   <div class="brand"><span class="logo">KPL</span><div><b>Corrugated Board Calculator</b><small>Manufacturing and Engineering Application</small></div></div>
-  <nav><button class="tab" id="navS">Single Carton</button><button class="tab" id="navM">Multiple Cartons</button></nav>
+  <nav><button class="tab" id="navS">Single Carton</button><button class="tab" id="navM">Multiple Cartons</button><button class="tab" id="navK">Stock Boards</button></nav>
   <div class="hr"><span class="status"><i></i><em id="status">Ready</em></span><button id="reset">Reset</button></div>
 </header>
 
@@ -143,6 +148,32 @@ details.card[open]>summary{margin-bottom:14px}
 <section class="card wide"><h2>Results</h2><div class="tbl" id="mout"></div><div class="actions"><button id="mcsv">Export CSV</button><button id="mprint">Print</button></div></section>
 </main>
 
+<main id="stock" hidden>
+<section class="card" id="sorder">
+  <h2>Emergency Order (Master Carton)</h2>
+  <div class="two"><label>Measurement Unit<select id="eunit"><option value="cm">Centimeter (cm)</option><option value="mm">Millimeter (mm)</option><option value="in">Inch (in)</option></select></label><span></span></div>
+  <div class="two"><label>Carton Length<input id="s_l" type="text" inputmode="decimal" placeholder="0"></label><label>Carton Width<input id="s_w" type="text" inputmode="decimal" placeholder="0"></label></div>
+  <div class="two"><label>Carton Height<input id="s_h" type="text" inputmode="decimal" placeholder="0"></label><span></span></div>
+  <div class="two"><label>Length Allowance (cm)<select id="salL"></select></label><label>Width Allowance (cm)<select id="salW"></select></label></div>
+  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="srot" style="width:auto;margin:0"> Allow rotated fit (swap stock length and width)</label>
+  <div class="err" id="se" style="margin-bottom:8px"></div>
+  <button class="primary" id="scalc">FIND CLOSEST STOCK BOARDS</button>
+</section>
+<section class="card" id="sreq"><h2>Required Board</h2><div id="sreqOut" class="cap" style="text-align:left"></div></section>
+<section class="card wide"><h2>Stock Boards, Closest First</h2><div class="tbl" id="sout"></div><div class="actions"><button id="scsv">Export CSV</button><button id="sprint">Print</button></div></section>
+<section class="card wide" id="slist">
+  <h2>Stock List</h2>
+  <div class="two" style="max-width:520px"><label>Stock Measurement Unit<select id="su"></select></label><span></span></div>
+  <div class="actions" style="margin:0 0 10px"><button id="sadd">Add Board</button><button id="sexp">Export Stock CSV</button><button id="sclr">Clear All</button></div>
+  <p class="cap" id="scount" style="text-align:left"></p>
+  <div class="tbl"><table><thead><tr><th>Pattern No.</th><th>Length</th><th>Width</th><th>Area (m²)</th><th></th></tr></thead><tbody id="sbody"></tbody></table></div>
+  <h2 style="margin-top:18px">Paste Stock List</h2>
+  <textarea id="paste" rows="5" placeholder="One production order per line: pattern number, length, width&#10;261115001, 240, 120&#10;261115002  200 x 100"></textarea>
+  <div class="actions"><button id="simp">Add Pasted Boards</button></div>
+  <div class="err" id="simpErr"></div>
+</section>
+</main>
+
 <script>
 /* ===== 1. CONFIG: manufacturing constants (edit here only) ===== */
 const CFG = {
@@ -188,6 +219,15 @@ const Engine = {
     const gsm=out.reduce((a,x)=>a+x.eff,0),g=area*gsm/10000;
     return {layers:out,gsm,g,kg:g/1000,area:area/10000,qty,qtyKg:qty?g*qty/1000:null};
   },
+  // Stock matching (cm): usable boards (>= required in both sizes) first, then by distance from the required size
+  match(RL,RW,list,rot){
+    const ev=(sl,sw,rotated)=>{const dl=sl-RL,dw=sw-RW;return {dl,dw,fits:dl>=-1e-9&&dw>=-1e-9,dist:Math.hypot(dl,dw),rotated}};
+    return list.filter(r=>r.l>0&&r.w>0).map(r=>{
+      const a=ev(r.l,r.w,false),b=rot?ev(r.w,r.l,true):null;
+      const best=!b?a:a.fits!==b.fits?(a.fits?a:b):(a.dist<=b.dist?a:b);
+      return {...r,...best,area:r.l*r.w/10000,excess:(r.l*r.w-RL*RW)/10000};
+    }).sort((x,y)=>(y.fits-x.fits)||(x.dist-y.dist));
+  },
   validateCount(raw){const v=Engine.validate(raw);return !v.ok||Number.isInteger(v.value)?v:{ok:false,msg:'Must be a whole number'}},
   reel(b,r,n){const used=b*n,trim=r-used;return {used,trim,pct:trim/r*100,max:Math.floor(r/b+1e-9),fits:used<=r+1e-9}},  // cm
   master({l,w,h},al=CFG.allowance){                // cm in, cm out, area in m2
@@ -198,9 +238,10 @@ const Engine = {
 
 /* ===== 3. UI ===== */
 const $=id=>document.getElementById(id);
+const loadStock=()=>{try{const j=JSON.parse(localStorage.getItem('kpl_stock_v1'));if(j&&Array.isArray(j.list))return {no:+j.no||1,list:j.list.filter(r=>r&&typeof r.id==='string'&&isFinite(r.l)&&isFinite(r.w))}}catch(e){}return {no:1,list:[]}};
 const alDef=()=>({length:CFG.allowance.length,width:CFG.allowance.width});
 const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:'',u:'cm',reel:'',cnt:'1'}));
-const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null};
+const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,stock:loadStock(),su:'cm',sIn:{l:'',w:'',h:'',u:'cm'},rot:false,sres:null};
 const d=(x,n)=>String(+x.toFixed(n));
 
 function init(){
@@ -225,7 +266,7 @@ function renderAll(){
   $('notice').textContent=c.ready?'':`${c.label} formulas have not been provided yet. Inputs are ready, calculation will be enabled once the specification is confirmed.`;
   $('fields').innerHTML=c.fields.map(([k,n])=>`<label>${n} (<span class="u">${S.unit}</span>)<input id="f_${k}" type="text" inputmode="decimal" placeholder="0" value="${S.vals[k]||''}"><span class="err" id="e_${k}"></span></label>`).join('');
   c.fields.forEach(([k])=>$('f_'+k).oninput=e=>{S.vals[k]=e.target.value;e.target.classList.remove('bad');$('e_'+k).textContent='';updateCube()});
-  renderFlutes();drawPly();updateCube();renderResult();renderGsm();renderWeight();renderReel();syncControls();renderMulti();
+  renderFlutes();drawPly();updateCube();renderResult();renderGsm();renderWeight();renderReel();syncControls();renderMulti();renderS();renderStock();
 }
 
 function renderFlutes(){
@@ -240,14 +281,15 @@ function setUnit(nu){
 }
 function setPly(v){S.ply=v;S.wres=null;S.mres=null;renderFlutes();drawPly();renderGsm();renderWeight();renderMout();syncControls()}
 function setAl(k,v){
-  S.al[k]=+v;const a=!!S.result,b=!!S.mres,c=!!S.wres,rr=!!S.rres;
-  S.result=null;S.wres=null;S.mres=null;S.rres=null;syncControls();
+  S.al[k]=+v;const a=!!S.result,b=!!S.mres,c=!!S.wres,rr=!!S.rres,sr=!!S.sres;
+  S.result=null;S.wres=null;S.mres=null;S.rres=null;S.sres=null;syncControls();
   if(a){calculate();if(c&&S.result)calcWeight();if(rr&&S.result)calcReel()}else renderResult();
   renderWeight();if(b)calcMulti();else renderMout();
+  if(sr)calcStock();else renderSout();
 }
 function syncControls(){
   ['','m'].forEach(p=>{if(!p)$('unit').value=S.unit;$(p+'ply').value=S.ply;$(p+'alL').value=S.al.length;$(p+'alW').value=S.al.width});
-  $('mn').value=S.n;$('rdim').value=S.rdim;$('mrdim').value=S.rdim;
+  $('mn').value=S.n;$('salL').value=S.al.length;$('salW').value=S.al.width;$('rdim').value=S.rdim;$('mrdim').value=S.rdim;
 }
 function initControls(){
   $('mply').innerHTML=$('ply').innerHTML;
@@ -266,17 +308,17 @@ function initControls(){
   $('rcalc').onclick=calcReel;
   $('reelIn').oninput=e=>{S.vals.reel=e.target.value;$('e_reel').textContent=''};
   $('cnt').oninput=e=>{S.cnt=e.target.value;$('e_cnt').textContent=''};
+  initStock();
   $('mcalc').onclick=calcMulti;$('mprint').onclick=()=>window.print();
   $('mcsv').onclick=()=>{if(!S.mres){setStatus('Nothing to export',true);return}const t=multiTable();dl([t.head,...t.body],'kpl-multi-carton.csv')};
-  $('navS').onclick=()=>showView('s');$('navM').onclick=()=>showView('m');
-  syncControls();showView(location.hash==='#multi'?'m':'s');
+  $('navS').onclick=()=>showView('s');$('navM').onclick=()=>showView('m');$('navK').onclick=()=>showView('k');
+  syncControls();showView(location.hash==='#multi'?'m':location.hash==='#stock'?'k':'s');
 }
 function showView(v){
-  const m=v==='m';
-  $('single').hidden=m;$('multi').hidden=!m;
-  $('navS').classList.toggle('on',!m);$('navM').classList.toggle('on',m);
-  try{history.replaceState(null,'',m?'#multi':location.pathname+location.search)}catch(e){}
-  renderGsm();renderMulti();
+  const ids={s:'single',m:'multi',k:'stock'},tabs={s:'navS',m:'navM',k:'navK'};
+  Object.keys(ids).forEach(x=>{$(ids[x]).hidden=x!==v;$(tabs[x]).classList.toggle('on',x===v)});
+  try{history.replaceState(null,'',v==='m'?'#multi':v==='k'?'#stock':location.pathname+location.search)}catch(e){}
+  renderGsm();renderMulti();renderS();renderStock();
 }
 
 function calculate(){
@@ -339,7 +381,7 @@ Calculated on ${r.time}`;
 }
 
 function reset(){
-  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null});
+  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,sIn:{l:'',w:'',h:'',u:'cm'},rot:false,sres:null});
   $('type').value='master';$('unit').value='cm';$('ply').value='3';
   setStatus('Ready');$('steps').textContent='Enter dimensions and press calculate.';renderAll();
 }
@@ -551,6 +593,103 @@ function dl(r,name){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));
   a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+
+/* ===== 3d. STOCK BOARDS ===== */
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function nextId(){let id;do{id='B'+S.stock.no++}while(S.stock.list.some(r=>r.id===id));return id}
+function saveStock(){try{localStorage.setItem('kpl_stock_v1',JSON.stringify(S.stock))}catch(e){}}
+function initStock(){
+  const opts=CFG.allowance.options.map(v=>`<option>${v}</option>`).join('');
+  $('salL').innerHTML=opts;$('salW').innerHTML=opts;
+  $('salL').onchange=e=>setAl('length',e.target.value);$('salW').onchange=e=>setAl('width',e.target.value);
+  $('su').innerHTML=$('eunit').innerHTML;$('su').value=S.su;
+  $('su').onchange=e=>{S.su=e.target.value;renderStock()};
+  $('eunit').onchange=e=>{
+    const I=S.sIn,nu=e.target.value;
+    ['l','w','h'].forEach(k=>{const v=Engine.validate(I[k]||'');if(v.ok)I[k]=String(+Engine.fromCm(Engine.toCm(v.value,I.u),nu).toFixed(4))});
+    I.u=nu;renderS();
+  };
+  ['l','w','h'].forEach(k=>$('s_'+k).oninput=e=>{S.sIn[k]=e.target.value;e.target.classList.remove('bad');$('se').textContent=''});
+  $('srot').onchange=e=>{S.rot=e.target.checked;if(S.sres)calcStock()};
+  $('scalc').onclick=calcStock;$('sprint').onclick=()=>window.print();
+  $('scsv').onclick=()=>{if(!S.sres){setStatus('Nothing to export',true);return}const t=stockTable();dl([t.head,...t.body],'kpl-stock-match.csv')};
+  $('sadd').onclick=()=>{S.stock.list.push({id:'',l:0,w:0});saveStock();renderStock();const n=S.stock.list.length-1;$('sk_id_'+n).focus()};
+  $('sclr').onclick=()=>{if(S.stock.list.length&&confirm('Delete all boards from the stock list?')){S.stock.list=[];S.stock.no=1;saveStock();renderStock();if(S.sres)calcStock()}};
+  $('sexp').onclick=()=>{const u=S.su;dl([['Pattern No.',`Length (${u})`,`Width (${u})`,'Area (m²)'],...S.stock.list.map(r=>[r.id,Engine.fmt(r.l,u),Engine.fmt(r.w,u),d(r.l*r.w/10000,4)])],'kpl-stock-list.csv')};
+  $('simp').onclick=importStock;
+}
+function renderS(){
+  const I=S.sIn;
+  $('eunit').value=I.u;$('s_l').value=I.l;$('s_w').value=I.w;$('s_h').value=I.h;$('srot').checked=S.rot;
+  renderSout();
+}
+function renderStock(){
+  const u=S.su,L=S.stock.list;
+  $('su').value=u;
+  $('scount').textContent=L.length?`${L.length} board${L.length>1?'s':''} in the stock list. Saved in this browser.`:'The stock list is empty. Add boards one by one or paste a list below.';
+  $('sbody').innerHTML=L.map((r,i)=>`<tr><td><input id="sk_id_${i}" value="${esc(r.id)}"></td><td><input id="sk_l_${i}" inputmode="decimal" value="${r.l?Engine.fmt(r.l,u):''}"></td><td><input id="sk_w_${i}" inputmode="decimal" value="${r.w?Engine.fmt(r.w,u):''}"></td><td id="sk_a_${i}">${d(r.l*r.w/10000,4)}</td><td><button id="sk_x_${i}">Delete</button></td></tr>`).join('');
+  L.forEach((r,i)=>{
+    $('sk_id_'+i).oninput=e=>{r.id=e.target.value;saveStock()};
+    ['l','w'].forEach(k=>{
+      const el=$(`sk_${k}_${i}`);
+      el.oninput=e=>{
+        const v=Engine.validate(e.target.value);
+        e.target.classList.toggle('bad',!v.ok);
+        if(v.ok){r[k]=Engine.toCm(v.value,S.su);$('sk_a_'+i).textContent=d(r.l*r.w/10000,4);saveStock()}
+      };
+      el.onchange=()=>{if(S.sres)calcStock()};
+    });
+    $('sk_x_'+i).onclick=()=>{L.splice(i,1);saveStock();renderStock();if(S.sres)calcStock()};
+  });
+}
+function importStock(){
+  const lines=$('paste').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),bad=[];let add=0,upd=0;
+  lines.forEach(ln=>{
+    const t=ln.replace(/(\d)\s*[xX×]\s*(?=\d)/g,'$1 ').split(/[\s,;]+/).filter(Boolean);
+    let id='',a,b;
+    if(t.length===2) [a,b]=t; else if(t.length===3) [id,a,b]=t;
+    const A=Engine.validate(a||''),B=Engine.validate(b||'');
+    if(!A.ok||!B.ok){bad.push(ln);return}
+    const l=Engine.toCm(A.value,S.su),w=Engine.toCm(B.value,S.su),ex=id&&S.stock.list.find(r=>r.id===id);
+    if(ex){ex.l=l;ex.w=w;upd++}else{S.stock.list.push({id,l,w});add++}
+  });
+  $('simpErr').textContent=bad.length?`Skipped ${bad.length} line(s) that could not be read: ${bad.slice(0,3).join(' | ')}${bad.length>3?' ...':''}`:'';
+  if(add||upd){$('paste').value=bad.join('\n');saveStock();renderStock();setStatus(`${add} added, ${upd} updated`);if(S.sres)calcStock()}
+}
+function calcStock(){
+  const I=S.sIn,cm={},errs=[];
+  ['l','w','h'].forEach(k=>{
+    const v=Engine.validate(I[k]||'');
+    $('s_'+k).classList.toggle('bad',!v.ok);
+    if(v.ok) cm[k]=Engine.toCm(v.value,I.u); else errs.push(k.toUpperCase()+': '+v.msg);
+  });
+  $('se').textContent=errs.join(', ');
+  if(errs.length){setStatus('Check inputs',true);return}
+  if(!S.stock.list.some(r=>r.l>0&&r.w>0)){$('se').textContent='The stock list is empty. Add your stock boards below first.';setStatus('No stock',true);return}
+  const b=Engine.master(cm,S.al);
+  S.sres={u:I.u,req:b,al:{...S.al},rot:S.rot,time:new Date().toLocaleString(),rows:Engine.match(b.L,b.W,S.stock.list,S.rot)};
+  setStatus('Stock matched');renderSout();
+}
+function stockStatus(r){
+  const e=1e-9,tag=r.rotated?' (rotated)':'';
+  if(r.fits) return (Math.abs(r.dl)<e&&Math.abs(r.dw)<e?'Exact fit':'Fits')+tag;
+  return (r.dl<-e&&r.dw<-e?'Too short and narrow':r.dl<-e?'Too short':'Too narrow')+tag;
+}
+function stockTable(){
+  const m=S.sres,u=m.u,F=v=>Engine.fmt(v,u),sg=(v,f)=>(v>=0?'+':'')+f(v);
+  return {
+    head:['Rank','Pattern No.','Length','Width','Area (m²)','Length Diff','Width Diff','Excess Area (m²)','Status'],
+    body:m.rows.map((r,i)=>[i+1,r.id||'(no number)',`${F(r.l)} ${u}`,`${F(r.w)} ${u}`,d(r.area,4),sg(r.dl,F)+' '+u,sg(r.dw,F)+' '+u,(r.excess>=0?'+':'')+d(r.excess,4),stockStatus(r)])
+  };
+}
+function renderSout(){
+  const m=S.sres;
+  if(!m){$('sreqOut').textContent='Enter the carton size and press find.';$('sout').innerHTML='';return}
+  const u=m.u,F=v=>Engine.fmt(v,u),best=m.rows[0]&&m.rows[0].fits?m.rows[0]:null;
+  $('sreqOut').innerHTML=`<div class="big"><div class="stat"><span>REQUIRED BOARD LENGTH</span><b>${F(m.req.L)} ${u}</b></div><div class="stat"><span>REQUIRED BOARD WIDTH</span><b>${F(m.req.W)} ${u}</b></div><div class="stat"><span>REQUIRED AREA</span><b>${d(m.req.area,4)} m²</b></div><div class="stat"><span>BEST MATCH</span><b style="font-size:1.1rem">${best?esc(best.id||'no number')+': '+F(best.l)+'X'+F(best.w)+' '+u+(best.rotated?' (rotated)':''):'No stock board fits'}</b></div></div>Allowances: length ${m.al.length} cm, width ${m.al.width} cm. Calculated on ${m.time}.`;
+  const t=stockTable();
+  $('sout').innerHTML=`<table class="mt"><tr>${t.head.map(x=>`<td>${x}</td>`).join('')}</tr>${t.body.map((r,i)=>`<tr class="${m.rows[i].fits?(i===0?'ok best':'ok'):'no'}">${r.map((x,j)=>`<td>${j===1?esc(x):x}</td>`).join('')}</tr>`).join('')}</table><p class="cap" style="text-align:left">Boards that fit (at least as long and as wide as required) are listed first, closest first. Boards that are too small follow, also closest first.</p>`;
 }
 
 /* ===== 4. VISUALS ===== */
