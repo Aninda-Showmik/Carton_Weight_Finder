@@ -155,7 +155,7 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="two"><label>Carton Length<input id="s_l" type="text" inputmode="decimal" placeholder="0"></label><label>Carton Width<input id="s_w" type="text" inputmode="decimal" placeholder="0"></label></div>
   <div class="two"><label>Carton Height<input id="s_h" type="text" inputmode="decimal" placeholder="0"></label><span></span></div>
   <div class="two"><label>Length Allowance (cm)<select id="salL"></select></label><label>Width Allowance (cm)<select id="salW"></select></label></div>
-  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="srot" style="width:auto;margin:0"> Allow rotated fit (swap stock length and width)</label>
+  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="spref" style="width:auto;margin:0"> Prefer boards that make more boxes together</label>
   <div class="err" id="se" style="margin-bottom:8px"></div>
   <button class="primary" id="scalc">FIND CLOSEST STOCK BOARDS</button>
 </section>
@@ -219,14 +219,19 @@ const Engine = {
     const gsm=out.reduce((a,x)=>a+x.eff,0),g=area*gsm/10000;
     return {layers:out,gsm,g,kg:g/1000,area:area/10000,qty,qtyKg:qty?g*qty/1000:null};
   },
-  // Stock matching (cm): usable boards (>= required in both sizes) first, then by distance from the required size
-  match(RL,RW,list,rot){
-    const ev=(sl,sw,rotated)=>{const dl=sl-RL,dw=sw-RW;return {dl,dw,fits:dl>=-1e-9&&dw>=-1e-9,dist:Math.hypot(dl,dw),rotated}};
+  // Stock matching (cm). A stock board is usable when it is at least as long and as wide as required.
+  // ups = how many required boards can be cut from one stock board (along length x across width).
+  // pref = true: usable boards that make more boxes together come first, then least area per box, then closest size.
+  match(RL,RW,list,pref){
+    const ev=(sl,sw)=>{
+      const dl=sl-RL,dw=sw-RW,fits=dl>=-1e-9&&dw>=-1e-9;
+      const nl=fits?Math.floor(sl/RL+1e-9):0,nw=fits?Math.floor(sw/RW+1e-9):0,ups=nl*nw;
+      return {dl,dw,fits,dist:Math.hypot(dl,dw),nl,nw,ups,perBox:ups?sl*sw/ups/10000:null,util:ups?ups*RL*RW/(sl*sw)*100:null};
+    };
     return list.filter(r=>r.l>0&&r.w>0).map(r=>{
-      const a=ev(r.l,r.w,false),b=rot?ev(r.w,r.l,true):null;
-      const best=!b?a:a.fits!==b.fits?(a.fits?a:b):(a.dist<=b.dist?a:b);
+      const best=ev(r.l,r.w,false);
       return {...r,...best,area:r.l*r.w/10000,excess:(r.l*r.w-RL*RW)/10000};
-    }).sort((x,y)=>(y.fits-x.fits)||(x.dist-y.dist));
+    }).sort((x,y)=>(y.fits-x.fits)||(pref&&x.fits?(y.ups-x.ups)||(x.perBox-y.perBox):0)||(x.dist-y.dist));
   },
   validateCount(raw){const v=Engine.validate(raw);return !v.ok||Number.isInteger(v.value)?v:{ok:false,msg:'Must be a whole number'}},
   reel(b,r,n){const used=b*n,trim=r-used;return {used,trim,pct:trim/r*100,max:Math.floor(r/b+1e-9),fits:used<=r+1e-9}},  // cm
@@ -241,7 +246,7 @@ const $=id=>document.getElementById(id);
 const loadStock=()=>{try{const j=JSON.parse(localStorage.getItem('kpl_stock_v1'));if(j&&Array.isArray(j.list))return {no:+j.no||1,list:j.list.filter(r=>r&&typeof r.id==='string'&&isFinite(r.l)&&isFinite(r.w))}}catch(e){}return {no:1,list:[]}};
 const alDef=()=>({length:CFG.allowance.length,width:CFG.allowance.width});
 const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:'',u:'cm',reel:'',cnt:'1'}));
-const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,stock:loadStock(),su:'cm',sIn:{l:'',w:'',h:'',u:'cm'},rot:false,sres:null};
+const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,stock:loadStock(),su:'cm',sIn:{l:'',w:'',h:'',u:'cm'},sres:null,pref:true};
 const d=(x,n)=>String(+x.toFixed(n));
 
 function init(){
@@ -381,7 +386,7 @@ Calculated on ${r.time}`;
 }
 
 function reset(){
-  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,sIn:{l:'',w:'',h:'',u:'cm'},rot:false,sres:null});
+  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,sIn:{l:'',w:'',h:'',u:'cm'},sres:null,pref:true});
   $('type').value='master';$('unit').value='cm';$('ply').value='3';
   setStatus('Ready');$('steps').textContent='Enter dimensions and press calculate.';renderAll();
 }
@@ -611,7 +616,7 @@ function initStock(){
     I.u=nu;renderS();
   };
   ['l','w','h'].forEach(k=>$('s_'+k).oninput=e=>{S.sIn[k]=e.target.value;e.target.classList.remove('bad');$('se').textContent=''});
-  $('srot').onchange=e=>{S.rot=e.target.checked;if(S.sres)calcStock()};
+  $('spref').onchange=e=>{S.pref=e.target.checked;if(S.sres)calcStock()};
   $('scalc').onclick=calcStock;$('sprint').onclick=()=>window.print();
   $('scsv').onclick=()=>{if(!S.sres){setStatus('Nothing to export',true);return}const t=stockTable();dl([t.head,...t.body],'kpl-stock-match.csv')};
   $('sadd').onclick=()=>{S.stock.list.push({id:'',l:0,w:0});saveStock();renderStock();const n=S.stock.list.length-1;$('sk_id_'+n).focus()};
@@ -621,7 +626,7 @@ function initStock(){
 }
 function renderS(){
   const I=S.sIn;
-  $('eunit').value=I.u;$('s_l').value=I.l;$('s_w').value=I.w;$('s_h').value=I.h;$('srot').checked=S.rot;
+  $('eunit').value=I.u;$('s_l').value=I.l;$('s_w').value=I.w;$('s_h').value=I.h;$('spref').checked=S.pref;
   renderSout();
 }
 function renderStock(){
@@ -668,28 +673,31 @@ function calcStock(){
   if(errs.length){setStatus('Check inputs',true);return}
   if(!S.stock.list.some(r=>r.l>0&&r.w>0)){$('se').textContent='The stock list is empty. Add your stock boards below first.';setStatus('No stock',true);return}
   const b=Engine.master(cm,S.al);
-  S.sres={u:I.u,req:b,al:{...S.al},rot:S.rot,time:new Date().toLocaleString(),rows:Engine.match(b.L,b.W,S.stock.list,S.rot)};
+  S.sres={u:I.u,req:b,al:{...S.al},pref:S.pref,time:new Date().toLocaleString(),rows:Engine.match(b.L,b.W,S.stock.list,S.pref)};
   setStatus('Stock matched');renderSout();
 }
 function stockStatus(r){
-  const e=1e-9,tag=r.rotated?' (rotated)':'';
-  if(r.fits) return (Math.abs(r.dl)<e&&Math.abs(r.dw)<e?'Exact fit':'Fits')+tag;
-  return (r.dl<-e&&r.dw<-e?'Too short and narrow':r.dl<-e?'Too short':'Too narrow')+tag;
+  const e=1e-9;
+  if(r.fits){
+    if(r.ups>1) return `Fits, ${r.ups} boxes together (${r.nl} along × ${r.nw} across)`;
+    return (Math.abs(r.dl)<e&&Math.abs(r.dw)<e?'Exact fit':'Fits, 1 box');
+  }
+  return (r.dl<-e&&r.dw<-e?'Too short and narrow':r.dl<-e?'Too short':'Too narrow');
 }
 function stockTable(){
   const m=S.sres,u=m.u,F=v=>Engine.fmt(v,u),sg=(v,f)=>(v>=0?'+':'')+f(v);
   return {
-    head:['Rank','Pattern No.','Length','Width','Area (m²)','Length Diff','Width Diff','Excess Area (m²)','Status'],
-    body:m.rows.map((r,i)=>[i+1,r.id||'(no number)',`${F(r.l)} ${u}`,`${F(r.w)} ${u}`,d(r.area,4),sg(r.dl,F)+' '+u,sg(r.dw,F)+' '+u,(r.excess>=0?'+':'')+d(r.excess,4),stockStatus(r)])
+    head:['Rank','Pattern No.','Length','Width','Area (m²)','Length Diff','Width Diff','Boxes per Board','Area per Box (m²)','Board Used (%)','Status'],
+    body:m.rows.map((r,i)=>[i+1,r.id||'(no number)',`${F(r.l)} ${u}`,`${F(r.w)} ${u}`,d(r.area,4),sg(r.dl,F)+' '+u,sg(r.dw,F)+' '+u,r.fits?r.ups:0,r.fits?d(r.perBox,4):'',r.fits?d(r.util,1):'',stockStatus(r)])
   };
 }
 function renderSout(){
   const m=S.sres;
   if(!m){$('sreqOut').textContent='Enter the carton size and press find.';$('sout').innerHTML='';return}
   const u=m.u,F=v=>Engine.fmt(v,u),best=m.rows[0]&&m.rows[0].fits?m.rows[0]:null;
-  $('sreqOut').innerHTML=`<div class="big"><div class="stat"><span>REQUIRED BOARD LENGTH</span><b>${F(m.req.L)} ${u}</b></div><div class="stat"><span>REQUIRED BOARD WIDTH</span><b>${F(m.req.W)} ${u}</b></div><div class="stat"><span>REQUIRED AREA</span><b>${d(m.req.area,4)} m²</b></div><div class="stat"><span>BEST MATCH</span><b style="font-size:1.1rem">${best?esc(best.id||'no number')+': '+F(best.l)+'X'+F(best.w)+' '+u+(best.rotated?' (rotated)':''):'No stock board fits'}</b></div></div>Allowances: length ${m.al.length} cm, width ${m.al.width} cm. Calculated on ${m.time}.`;
+  $('sreqOut').innerHTML=`<div class="big"><div class="stat"><span>REQUIRED BOARD LENGTH</span><b>${F(m.req.L)} ${u}</b></div><div class="stat"><span>REQUIRED BOARD WIDTH</span><b>${F(m.req.W)} ${u}</b></div><div class="stat"><span>REQUIRED AREA</span><b>${d(m.req.area,4)} m²</b></div><div class="stat"><span>BEST MATCH</span><b style="font-size:1.1rem">${best?esc(best.id||'no number')+': '+F(best.l)+'X'+F(best.w)+' '+u+(best.ups>1?', '+best.ups+' boxes together':''):'No stock board fits'}</b></div></div>Allowances: length ${m.al.length} cm, width ${m.al.width} cm. Calculated on ${m.time}.`;
   const t=stockTable();
-  $('sout').innerHTML=`<table class="mt"><tr>${t.head.map(x=>`<td>${x}</td>`).join('')}</tr>${t.body.map((r,i)=>`<tr class="${m.rows[i].fits?(i===0?'ok best':'ok'):'no'}">${r.map((x,j)=>`<td>${j===1?esc(x):x}</td>`).join('')}</tr>`).join('')}</table><p class="cap" style="text-align:left">Boards that fit (at least as long and as wide as required) are listed first, closest first. Boards that are too small follow, also closest first.</p>`;
+  $('sout').innerHTML=`<table class="mt"><tr>${t.head.map(x=>`<td>${x}</td>`).join('')}</tr>${t.body.map((r,i)=>`<tr class="${m.rows[i].fits?(i===0?'ok best':'ok'):'no'}">${r.map((x,j)=>`<td>${j===1?esc(x):x}</td>`).join('')}</tr>`).join('')}</table><p class="cap" style="text-align:left">Boards that are at least as long and as wide as required come first. ${m.pref?'Among those, boards that make more boxes together come first, then the least board area per box, then the closest size.':'Among those, the closest size comes first.'} Boards that are too small follow, closest first.</p>`;
 }
 
 /* ===== 4. VISUALS ===== */
