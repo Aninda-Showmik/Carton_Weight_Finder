@@ -56,7 +56,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius
 th{font-size:.78rem;color:var(--muted);text-align:left;padding:6px 4px}
 .mt td{text-align:right;font-weight:400}.mt td:first-child,.mt td:nth-child(2){text-align:left}
 .mt tr:first-child td{font-weight:700;color:var(--muted)}.mt tr.ok td{background:#e9f7ef}.mt tr.best td{font-weight:700}.mt tr.no td{color:var(--muted)}
-#sbody td{padding:3px 4px}#sbody input{margin:0;padding:7px 9px}
+#sbody td{padding:3px 4px}#sbody input,#sbody select{margin:0;padding:7px 9px}
 .tab.on{background:#fff;color:var(--navy);border-color:#fff}
 details.card>summary{cursor:pointer;font-size:.8rem;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
 details.card[open]>summary{margin-bottom:14px}
@@ -151,7 +151,7 @@ details.card[open]>summary{margin-bottom:14px}
 <main id="stock" hidden>
 <section class="card" id="sorder">
   <h2>Emergency Order (Master Carton)</h2>
-  <div class="two"><label>Measurement Unit<select id="eunit"><option value="cm">Centimeter (cm)</option><option value="mm">Millimeter (mm)</option><option value="in">Inch (in)</option></select></label><span></span></div>
+  <div class="two"><label>Measurement Unit<select id="eunit"><option value="cm">Centimeter (cm)</option><option value="mm">Millimeter (mm)</option><option value="in">Inch (in)</option></select></label><label>Ply Configuration<select id="sply"><option value="3">3 Ply</option><option value="5">5 Ply</option></select></label></div>
   <div class="two"><label>Carton Length<input id="s_l" type="text" inputmode="decimal" placeholder="0"></label><label>Carton Width<input id="s_w" type="text" inputmode="decimal" placeholder="0"></label></div>
   <div class="two"><label>Carton Height<input id="s_h" type="text" inputmode="decimal" placeholder="0"></label><span></span></div>
   <div class="two"><label>Length Allowance (cm)<select id="salL"></select></label><label>Width Allowance (cm)<select id="salW"></select></label></div>
@@ -166,9 +166,11 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="two" style="max-width:520px"><label>Stock Measurement Unit<select id="su"></select></label><span></span></div>
   <div class="actions" style="margin:0 0 10px"><button id="sadd">Add Board</button><button id="sexp">Export Stock CSV</button><button id="sclr">Clear All</button></div>
   <p class="cap" id="scount" style="text-align:left"></p>
-  <div class="tbl"><table><thead><tr><th>Pattern No.</th><th>Length</th><th>Width</th><th>Area (m²)</th><th></th></tr></thead><tbody id="sbody"></tbody></table></div>
+  <div class="tbl"><table><thead><tr><th>Pattern No.</th><th>Length</th><th>Width</th><th>Ply</th><th>Area (m²)</th><th></th></tr></thead><tbody id="sbody"></tbody></table></div>
   <h2 style="margin-top:18px">Paste Stock List</h2>
-  <textarea id="paste" rows="5" placeholder="One production order per line: pattern number, length, width&#10;261115001, 240, 120&#10;261115002  200 x 100"></textarea>
+  <div class="two" style="max-width:520px"><label>Ply for pasted boards<select id="pply"><option value="">I will write the ply in each line</option><option value="3">3 Ply for all pasted lines</option><option value="5">5 Ply for all pasted lines</option></select></label><span></span></div>
+  <p class="cap" style="text-align:left">Write the ply at the end of each line, for example <b>261115001 240x100 5</b>, or choose 3 Ply or 5 Ply above and paste only <b>261115001 240x100</b>. A ply written in a line is used for that line.</p>
+  <textarea id="paste" rows="5" placeholder="One production order per line: pattern number, length, width, ply&#10;261115001, 240, 120, 5&#10;261115002  200 x 100  3 ply"></textarea>
   <div class="actions"><button id="simp">Add Pasted Boards</button></div>
   <div class="err" id="simpErr"></div>
 </section>
@@ -243,10 +245,10 @@ const Engine = {
 
 /* ===== 3. UI ===== */
 const $=id=>document.getElementById(id);
-const loadStock=()=>{try{const j=JSON.parse(localStorage.getItem('kpl_stock_v1'));if(j&&Array.isArray(j.list))return {no:+j.no||1,list:j.list.filter(r=>r&&typeof r.id==='string'&&isFinite(r.l)&&isFinite(r.w))}}catch(e){}return {no:1,list:[]}};
+const loadStock=()=>{try{const j=JSON.parse(localStorage.getItem('kpl_stock_v1'));if(j&&Array.isArray(j.list))return {no:+j.no||1,list:j.list.filter(r=>r&&typeof r.id==='string'&&isFinite(r.l)&&isFinite(r.w)).map(r=>({...r,p:r.p==='3'||r.p==='5'?r.p:''}))}}catch(e){}return {no:1,list:[]}};
 const alDef=()=>({length:CFG.allowance.length,width:CFG.allowance.width});
 const rowsDef=()=>Array.from({length:6},()=>({l:'',w:'',h:'',u:'cm',reel:'',cnt:'1'}));
-const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,stock:loadStock(),su:'cm',sIn:{l:'',w:'',h:'',u:'cm'},sres:null,pref:true};
+const S={type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,stock:loadStock(),su:'cm',sIn:{l:'',w:'',h:'',u:'cm',p:'3'},sres:null,pref:true};
 const d=(x,n)=>String(+x.toFixed(n));
 
 function init(){
@@ -386,7 +388,7 @@ Calculated on ${r.time}`;
 }
 
 function reset(){
-  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,sIn:{l:'',w:'',h:'',u:'cm'},sres:null,pref:true});
+  Object.assign(S,{type:'master',unit:'cm',ply:'3',vals:{},result:null,gsm:{3:{},5:{}},qty:'',wres:null,al:alDef(),n:2,rows:rowsDef(),mres:null,cnt:'1',rdim:'W',rres:null,sIn:{l:'',w:'',h:'',u:'cm',p:'3'},sres:null,pref:true});
   $('type').value='master';$('unit').value='cm';$('ply').value='3';
   setStatus('Ready');$('steps').textContent='Enter dimensions and press calculate.';renderAll();
 }
@@ -603,6 +605,7 @@ function dl(r,name){
 /* ===== 3d. STOCK BOARDS ===== */
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function nextId(){let id;do{id='B'+S.stock.no++}while(S.stock.list.some(r=>r.id===id));return id}
+function dupId(id,self){const k=String(id).trim().toLowerCase();return !!k&&S.stock.list.some(r=>r!==self&&String(r.id).trim().toLowerCase()===k)}
 function saveStock(){try{localStorage.setItem('kpl_stock_v1',JSON.stringify(S.stock))}catch(e){}}
 function initStock(){
   const opts=CFG.allowance.options.map(v=>`<option>${v}</option>`).join('');
@@ -610,6 +613,7 @@ function initStock(){
   $('salL').onchange=e=>setAl('length',e.target.value);$('salW').onchange=e=>setAl('width',e.target.value);
   $('su').innerHTML=$('eunit').innerHTML;$('su').value=S.su;
   $('su').onchange=e=>{S.su=e.target.value;renderStock()};
+  $('sply').onchange=e=>{S.sIn.p=e.target.value;if(S.sres)calcStock()};
   $('eunit').onchange=e=>{
     const I=S.sIn,nu=e.target.value;
     ['l','w','h'].forEach(k=>{const v=Engine.validate(I[k]||'');if(v.ok)I[k]=String(+Engine.fromCm(Engine.toCm(v.value,I.u),nu).toFixed(4))});
@@ -619,23 +623,35 @@ function initStock(){
   $('spref').onchange=e=>{S.pref=e.target.checked;if(S.sres)calcStock()};
   $('scalc').onclick=calcStock;$('sprint').onclick=()=>window.print();
   $('scsv').onclick=()=>{if(!S.sres){setStatus('Nothing to export',true);return}const t=stockTable();dl([t.head,...t.body],'kpl-stock-match.csv')};
-  $('sadd').onclick=()=>{S.stock.list.push({id:'',l:0,w:0});saveStock();renderStock();const n=S.stock.list.length-1;$('sk_id_'+n).focus()};
+  $('sadd').onclick=()=>{S.stock.list.push({id:'',l:0,w:0,p:(S.stock.list.length&&S.stock.list[S.stock.list.length-1].p)||'3'});saveStock();renderStock();const n=S.stock.list.length-1;$('sk_id_'+n).focus()};
   $('sclr').onclick=()=>{if(S.stock.list.length&&confirm('Delete all boards from the stock list?')){S.stock.list=[];S.stock.no=1;saveStock();renderStock();if(S.sres)calcStock()}};
-  $('sexp').onclick=()=>{const u=S.su;dl([['Pattern No.',`Length (${u})`,`Width (${u})`,'Area (m²)'],...S.stock.list.map(r=>[r.id,Engine.fmt(r.l,u),Engine.fmt(r.w,u),d(r.l*r.w/10000,4)])],'kpl-stock-list.csv')};
+  $('sexp').onclick=()=>{const u=S.su;dl([['Pattern No.',`Length (${u})`,`Width (${u})`,'Ply','Area (m²)'],...S.stock.list.map(r=>[r.id,Engine.fmt(r.l,u),Engine.fmt(r.w,u),r.p,d(r.l*r.w/10000,4)])],'kpl-stock-list.csv')};
   $('simp').onclick=importStock;
 }
 function renderS(){
   const I=S.sIn;
-  $('eunit').value=I.u;$('s_l').value=I.l;$('s_w').value=I.w;$('s_h').value=I.h;$('spref').checked=S.pref;
+  $('eunit').value=I.u;$('sply').value=I.p;$('s_l').value=I.l;$('s_w').value=I.w;$('s_h').value=I.h;$('spref').checked=S.pref;
   renderSout();
 }
 function renderStock(){
   const u=S.su,L=S.stock.list;
   $('su').value=u;
-  $('scount').textContent=L.length?`${L.length} board${L.length>1?'s':''} in the stock list. Saved in this browser.`:'The stock list is empty. Add boards one by one or paste a list below.';
-  $('sbody').innerHTML=L.map((r,i)=>`<tr><td><input id="sk_id_${i}" value="${esc(r.id)}"></td><td><input id="sk_l_${i}" inputmode="decimal" value="${r.l?Engine.fmt(r.l,u):''}"></td><td><input id="sk_w_${i}" inputmode="decimal" value="${r.w?Engine.fmt(r.w,u):''}"></td><td id="sk_a_${i}">${d(r.l*r.w/10000,4)}</td><td><button id="sk_x_${i}">Delete</button></td></tr>`).join('');
+  const np=L.filter(r=>!r.p).length,cnt={};
+  L.forEach(r=>{const k=r.id.trim().toLowerCase();if(k)cnt[k]=(cnt[k]||0)+1});
+  const nd=Object.values(cnt).filter(c=>c>1).length;
+  $('scount').textContent=L.length?`${L.length} board${L.length>1?'s':''} in the stock list. Saved in this browser.${np?` ${np} board${np>1?'s have':' has'} no ply set and ${np>1?'are':'is'} not matched.`:''}`:'The stock list is empty. Add boards one by one or paste a list below.';
+  if(nd) $('scount').textContent+=` ${nd} pattern number${nd>1?'s are':' is'} used more than once. Each pattern number must be unique, please fix the red rows.`;
+  $('sbody').innerHTML=L.map((r,i)=>`<tr><td><input id="sk_id_${i}" value="${esc(r.id)}"></td><td><input id="sk_l_${i}" inputmode="decimal" value="${r.l?Engine.fmt(r.l,u):''}"></td><td><input id="sk_w_${i}" inputmode="decimal" value="${r.w?Engine.fmt(r.w,u):''}"></td><td><select id="sk_p_${i}"><option value="">Ply?</option><option value="3"${r.p==='3'?' selected':''}>3 Ply</option><option value="5"${r.p==='5'?' selected':''}>5 Ply</option></select></td><td id="sk_a_${i}">${d(r.l*r.w/10000,4)}</td><td><button id="sk_x_${i}">Delete</button></td></tr>`).join('');
   L.forEach((r,i)=>{
-    $('sk_id_'+i).oninput=e=>{r.id=e.target.value;saveStock()};
+    const idEl=$('sk_id_'+i),key=r.id.trim().toLowerCase();let prev=r.id;
+    idEl.classList.toggle('bad',!!key&&cnt[key]>1);
+    idEl.onfocus=()=>{prev=r.id};
+    idEl.oninput=e=>{r.id=e.target.value;saveStock()};
+    idEl.onchange=e=>{
+      if(dupId(r.id,r)){const x=r.id;r.id=prev;e.target.value=prev;saveStock();$('simpErr').textContent=`Pattern number ${x} is already in the stock list. Each pattern number can be used only once.`}
+      else if(S.sres)calcStock();
+    };
+    $('sk_p_'+i).onchange=e=>{r.p=e.target.value;saveStock();renderStock();if(S.sres)calcStock()};
     ['l','w'].forEach(k=>{
       const el=$(`sk_${k}_${i}`);
       el.oninput=e=>{
@@ -649,18 +665,22 @@ function renderStock(){
   });
 }
 function importStock(){
-  const lines=$('paste').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),bad=[];let add=0,upd=0;
+  const lines=$('paste').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),bad=[],dup=[],keep=[];let add=0;
   lines.forEach(ln=>{
-    const t=ln.replace(/(\d)\s*[xX×]\s*(?=\d)/g,'$1 ').split(/[\s,;]+/).filter(Boolean);
-    let id='',a,b;
-    if(t.length===2) [a,b]=t; else if(t.length===3) [id,a,b]=t;
+    const t=ln.replace(/[\s-]*ply\b/gi,'').replace(/(\d)\s*[xX×]\s*(?=\d)/g,'$1 ').split(/[\s,;]+/).filter(Boolean);
+    let id='',a,b,pl=$('pply').value;
+    if(t.length===2) [a,b]=t; else if(t.length===3) [id,a,b]=t; else if(t.length>=4) [id,a,b,pl]=t;
     const A=Engine.validate(a||''),B=Engine.validate(b||'');
-    if(!A.ok||!B.ok){bad.push(ln);return}
-    const l=Engine.toCm(A.value,S.su),w=Engine.toCm(B.value,S.su),ex=id&&S.stock.list.find(r=>r.id===id);
-    if(ex){ex.l=l;ex.w=w;upd++}else{S.stock.list.push({id,l,w});add++}
+    if(!A.ok||!B.ok||(pl!=='3'&&pl!=='5')){bad.push(ln);keep.push(ln);return}
+    if(dupId(id,null)){dup.push(id);keep.push(ln);return}      // a pattern number can only be in the stock list once
+    S.stock.list.push({id,l:Engine.toCm(A.value,S.su),w:Engine.toCm(B.value,S.su),p:pl});add++;
   });
-  $('simpErr').textContent=bad.length?`Skipped ${bad.length} line(s) that could not be read: ${bad.slice(0,3).join(' | ')}${bad.length>3?' ...':''}`:'';
-  if(add||upd){$('paste').value=bad.join('\n');saveStock();renderStock();setStatus(`${add} added, ${upd} updated`);if(S.sres)calcStock()}
+  const msgs=[];
+  if(dup.length) msgs.push(`Not added, already in the stock list: ${dup.join(', ')}. Each pattern number can be used only once.`);
+  if(bad.length) msgs.push(`Skipped ${bad.length} line(s). Each line needs a length, a width and a ply of 3 or 5 (write it in the line or choose it above): ${bad.slice(0,3).join(' | ')}${bad.length>3?' ...':''}`);
+  $('simpErr').textContent=msgs.join(' ');
+  if(add||keep.length){$('paste').value=keep.join('\n')}
+  if(add){saveStock();renderStock();setStatus(`${add} added`);if(S.sres)calcStock()}
 }
 function calcStock(){
   const I=S.sIn,cm={},errs=[];
@@ -671,9 +691,10 @@ function calcStock(){
   });
   $('se').textContent=errs.join(', ');
   if(errs.length){setStatus('Check inputs',true);return}
-  if(!S.stock.list.some(r=>r.l>0&&r.w>0)){$('se').textContent='The stock list is empty. Add your stock boards below first.';setStatus('No stock',true);return}
+  const valid=S.stock.list.filter(r=>r.l>0&&r.w>0),pool=valid.filter(r=>r.p===I.p);
+  if(!pool.length){$('se').textContent=`No ${I.p} ply boards in the stock list. Add them below first.`;setStatus('No stock',true);return}
   const b=Engine.master(cm,S.al);
-  S.sres={u:I.u,req:b,al:{...S.al},pref:S.pref,time:new Date().toLocaleString(),rows:Engine.match(b.L,b.W,S.stock.list,S.pref)};
+  S.sres={u:I.u,p:I.p,req:b,al:{...S.al},pref:S.pref,other:valid.filter(r=>r.p&&r.p!==I.p).length,noPly:valid.filter(r=>!r.p).length,time:new Date().toLocaleString(),rows:Engine.match(b.L,b.W,pool,S.pref)};
   setStatus('Stock matched');renderSout();
 }
 function stockStatus(r){
@@ -687,15 +708,15 @@ function stockStatus(r){
 function stockTable(){
   const m=S.sres,u=m.u,F=v=>Engine.fmt(v,u),sg=(v,f)=>(v>=0?'+':'')+f(v);
   return {
-    head:['Rank','Pattern No.','Length','Width','Area (m²)','Length Diff','Width Diff','Boxes per Board','Area per Box (m²)','Board Used (%)','Status'],
-    body:m.rows.map((r,i)=>[i+1,r.id||'(no number)',`${F(r.l)} ${u}`,`${F(r.w)} ${u}`,d(r.area,4),sg(r.dl,F)+' '+u,sg(r.dw,F)+' '+u,r.fits?r.ups:0,r.fits?d(r.perBox,4):'',r.fits?d(r.util,1):'',stockStatus(r)])
+    head:['Rank','Pattern No.','Ply','Length','Width','Area (m²)','Length Diff','Width Diff','Boxes per Board','Area per Box (m²)','Board Used (%)','Status'],
+    body:m.rows.map((r,i)=>[i+1,r.id||'(no number)',`${r.p} Ply`,`${F(r.l)} ${u}`,`${F(r.w)} ${u}`,d(r.area,4),sg(r.dl,F)+' '+u,sg(r.dw,F)+' '+u,r.fits?r.ups:0,r.fits?d(r.perBox,4):'',r.fits?d(r.util,1):'',stockStatus(r)])
   };
 }
 function renderSout(){
   const m=S.sres;
   if(!m){$('sreqOut').textContent='Enter the carton size and press find.';$('sout').innerHTML='';return}
   const u=m.u,F=v=>Engine.fmt(v,u),best=m.rows[0]&&m.rows[0].fits?m.rows[0]:null;
-  $('sreqOut').innerHTML=`<div class="big"><div class="stat"><span>REQUIRED BOARD LENGTH</span><b>${F(m.req.L)} ${u}</b></div><div class="stat"><span>REQUIRED BOARD WIDTH</span><b>${F(m.req.W)} ${u}</b></div><div class="stat"><span>REQUIRED AREA</span><b>${d(m.req.area,4)} m²</b></div><div class="stat"><span>BEST MATCH</span><b style="font-size:1.1rem">${best?esc(best.id||'no number')+': '+F(best.l)+'X'+F(best.w)+' '+u+(best.ups>1?', '+best.ups+' boxes together':''):'No stock board fits'}</b></div></div>Allowances: length ${m.al.length} cm, width ${m.al.width} cm. Calculated on ${m.time}.`;
+  $('sreqOut').innerHTML=`<div class="big"><div class="stat"><span>REQUIRED BOARD LENGTH</span><b>${F(m.req.L)} ${u}</b></div><div class="stat"><span>REQUIRED BOARD WIDTH</span><b>${F(m.req.W)} ${u}</b></div><div class="stat"><span>REQUIRED AREA</span><b>${d(m.req.area,4)} m²</b></div><div class="stat"><span>BEST MATCH</span><b style="font-size:1.1rem">${best?esc(best.id||'no number')+': '+F(best.l)+'X'+F(best.w)+' '+u+(best.ups>1?', '+best.ups+' boxes together':''):'No stock board fits'}</b></div></div>Ply: ${m.p} Ply. Allowances: length ${m.al.length} cm, width ${m.al.width} cm.${m.other?` ${m.other} board(s) of the other ply are not shown.`:''}${m.noPly?` ${m.noPly} board(s) have no ply set and are not matched.`:''} Calculated on ${m.time}.`;
   const t=stockTable();
   $('sout').innerHTML=`<table class="mt"><tr>${t.head.map(x=>`<td>${x}</td>`).join('')}</tr>${t.body.map((r,i)=>`<tr class="${m.rows[i].fits?(i===0?'ok best':'ok'):'no'}">${r.map((x,j)=>`<td>${j===1?esc(x):x}</td>`).join('')}</tr>`).join('')}</table><p class="cap" style="text-align:left">Boards that are at least as long and as wide as required come first. ${m.pref?'Among those, boards that make more boxes together come first, then the least board area per box, then the closest size.':'Among those, the closest size comes first.'} Boards that are too small follow, closest first.</p>`;
 }
@@ -750,6 +771,21 @@ function updateCube(){
   spin();
   $('cap').textContent=keys?(real?`L ${S.vals.l} × W ${S.vals.w} × H ${S.vals.h} ${S.unit} (drag to rotate)`:'Sample proportions shown. Enter L, W and H to update.'):'Preview available for three dimension carton types.';
 }
+/* ===== 5. ENTER KEY: move to the next input, calculate on the last one ===== */
+document.addEventListener('keydown',e=>{
+  const t=e.target;
+  if(e.key!=='Enter'||e.isComposing||t.tagName!=='INPUT'||t.type==='checkbox') return;
+  const scopes=[['#inputs','calc'],['#reelCard','rcalc'],['#gsmCard','wcalc'],['#mrowsCard','mcalc'],['#sorder','scalc'],['#sbody',null]];
+  const sc=scopes.find(([q])=>t.closest(q));
+  if(!sc) return;
+  e.preventDefault();
+  const list=[...t.closest(sc[0]).querySelectorAll('input:not([type=checkbox])')].filter(x=>!x.closest('[hidden],label[style*="display:none"]'));
+  const i=list.indexOf(t);
+  if(i<list.length-1){list[i+1].focus();list[i+1].select();return}
+  if(sc[1]) $(sc[1]).click();
+  else{const r=S.stock.list[S.stock.list.length-1];if(r&&r.l>0&&r.w>0)$('sadd').click()}   // stock list: Enter on the last box adds a new row
+});
+
 init();
 </script>
 </body>
